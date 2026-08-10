@@ -1,0 +1,30 @@
+# Ảnh do AI tạo — là kết quả sản xuất, không phải mã nguồn
+generated/
+
+# Thư mục tạm mỗi lần gọi Codex (chứa ảnh đầu vào của lượt chạy)
+.codex-jobs/
+
+# Log máy chủ
+.server-out.log
+.server-err.log
+*.log
+
+# Bản sao lưu khi sửa file
+*.bak
+*.bak-*
+
+# Node
+node_modules/
+
+# Hệ điều hành
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# KHÔNG BAO GIỜ commit khoá.
+# Khoá API được mã hoá bằng Windows DPAPI và lưu ngoài repo tại
+# %LOCALAPPDATA%\StudioFlow\ — nhưng chặn sẵn cho chắc.
+*.clixml
+.env
+.env.*
+PASTE_OPENAI_KEY_HERE.txt

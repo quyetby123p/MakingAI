@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin:0; height:100%; overflow:hidden; background:#fff; }
+  body { font-family:"Geist","Helvetica Neue",Helvetica,sans-serif; color:#1a1a1c; -webkit-font-smoothing:antialiased; }
+  * { box-sizing:border-box; }
+  a { color:#1a1a1c; } a:hover { color:#000; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:#ececea; border-radius:10px; border:3px solid #fff; }
+</style>
+</helmet>
+
+<div style="height:100vh; width:100vw; display:flex; flex-direction:column; align-items:center; background:#fff; overflow:hidden; padding:0 clamp(14px,2.4vw,44px);">
+
+  <header style="width:100%; max-width:1360px; display:flex; align-items:center; justify-content:space-between; gap:20px; padding:clamp(10px,1.6vh,20px) 0 clamp(8px,1vh,12px);">
+    <span style="font-family:'Instrument Serif',serif; font-size:20px; letter-spacing:-0.01em;">Studio Flow</span>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#b0afa8;">← → đổi bước · 1–5 nhảy bước</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="width:6px; height:6px; border-radius:50%; background:#7d9482;"></span>
+        <span style="font-size:12.5px; color:#8f8f88; white-space:nowrap;">gpt-image-2 sẵn sàng</span>
+      </div>
+    </div>
+  </header>
+
+  <nav style="width:100%; max-width:1360px; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:clamp(8px,1.2vw,18px); padding-bottom:clamp(10px,1.4vh,18px);">
+    <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+      <button onClick="{{ s.go }}" style="display:flex; flex-direction:column; gap:8px; align-items:flex-start; border:none; background:transparent; padding:0; cursor:pointer; font-family:inherit; text-align:left; min-width:0;">
+        <span style="width:100%; height:2px; background:{{ s.bar }};"></span>
+        <span style="display:flex; align-items:baseline; gap:7px; min-width:0;">
+          <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:{{ s.numFg }};">{{ s.n }}</span>
+          <span style="font-size:13px; font-weight:500; color:{{ s.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ s.label }}</span>
+        </span>
+      </button>
+    </sc-for>
+  </nav>
+
+  <section style="width:100%; max-width:1360px; flex:1; min-height:0; display:flex; flex-direction:column; gap:clamp(10px,1.4vh,18px);">
+
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:28px;">
+      <div style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+        <h1 style="margin:0; font-family:'Instrument Serif',serif; font-size:clamp(24px,2.6vw,38px); font-weight:400; letter-spacing:-0.02em; line-height:1.05;">{{ title }}</h1>
+        <p style="margin:0; font-size:14px; color:#84847e; line-height:1.45; max-width:64ch; text-wrap:pretty;">{{ subtitle }}</p>
+      </div>
+      <div style="display:flex; align-items:baseline; gap:8px; white-space:nowrap;">
+        <span style="font-family:'Instrument Serif',serif; font-size:26px;">{{ counter }}</span>
+        <span style="font-size:12.5px; color:#a9a9a2;">{{ counterLabel }}</span>
+      </div>
+    </div>
+
+    <div style="flex:1; min-height:0;">
+
+      <sc-if value="{{ isStep1 }}" hint-placeholder-val="{{ true }}">
+        <div style="height:100%; min-height:0; overflow-y:auto; overflow-x:hidden;">
+          <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(178px,1fr)); gap:clamp(12px,1.6vw,22px);">
+            <sc-for list="{{ products }}" as="p" hint-placeholder-count="3">
+              <article style="display:flex; flex-direction:column; gap:9px; min-width:0;">
+                <div style="position:relative; aspect-ratio:4/5; background:repeating-linear-gradient(45deg,#f1f0ed 0 7px,#f9f9f7 7px 14px); display:grid; place-items:center;">
+                  <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#9c9b95;">ảnh sản phẩm</span>
+                </div>
+                <div style="display:flex; align-items:baseline; gap:8px; min-width:0;">
+                  <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#b0afa8;">{{ p.idx }}</span>
+                  <span style="font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ p.code }}</span>
+                </div>
+                <div style="display:flex; gap:14px;">
+                  <button style="border:none; background:transparent; padding:0; font-family:inherit; font-size:12.5px; color:#6f6f69; text-decoration:underline; text-underline-offset:3px; cursor:pointer;">Thay ảnh</button>
+                  <button style="border:none; background:transparent; padding:0; font-family:inherit; font-size:12.5px; color:#6f6f69; text-decoration:underline; text-underline-offset:3px; cursor:pointer;">Thêm góc ảnh</button>
+                </div>
+              </article>
+            </sc-for>
+            <button style="aspect-ratio:4/5; border:1px solid #eeedea; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; cursor:pointer; font-family:inherit;" style-hover="background:#fafaf9;">
+              <span style="font-family:'Instrument Serif',serif; font-size:26px; color:#a9a9a2; line-height:1;">+</span>
+              <span style="font-size:13px;">Thêm ảnh chính</span>
+              <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#b0afa8;">{{ slotsLeft }}</span>
+            </button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStep2 }}" hint-placeholder-val="{{ true }}">
+        <div style="height:100%; display:grid; grid-template-columns:minmax(0,1fr) clamp(210px,22vw,306px); gap:clamp(16px,2.6vw,46px); min-height:0;">
+          <div style="min-height:0; overflow-y:auto; overflow-x:hidden;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:clamp(12px,1.6vw,20px);">
+              <sc-for list="{{ models }}" as="mo" hint-placeholder-count="3">
+                <div style="display:flex; flex-direction:column; gap:8px; min-width:0;">
+                  <div style="aspect-ratio:3/4; background:repeating-linear-gradient(45deg,#f1f0ed 0 7px,#f9f9f7 7px 14px); display:grid; place-items:center;">
+                    <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#9c9b95;">người mẫu</span>
+                  </div>
+                  <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#8f8f88;">{{ mo.label }}</span>
+                </div>
+              </sc-for>
+              <button style="aspect-ratio:3/4; border:1px solid #eeedea; background:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; cursor:pointer; font-family:inherit;" style-hover="background:#fafaf9;">
+                <span style="font-family:'Instrument Serif',serif; font-size:24px; color:#a9a9a2; line-height:1;">+</span>
+                <span style="font-size:12.5px; color:#6f6f69;">Tải ảnh mẫu</span>
+              </button>
+            </div>
+          </div>
+          <aside style="display:flex; flex-direction:column; gap:16px; min-height:0; overflow-y:auto; overflow-x:hidden;">
+            <span style="font-family:'Instrument Serif',serif; font-size:19px; line-height:1.2;">Ảnh thế nào thì dễ ra kết quả đẹp?</span>
+            <sc-for list="{{ tips }}" as="t" hint-placeholder-count="3">
+              <div style="display:flex; flex-direction:column; gap:3px;">
+                <span style="font-size:13px; font-weight:500;">{{ t.title }}</span>
+                <span style="font-size:12.5px; color:#8f8f88; line-height:1.5; text-wrap:pretty;">{{ t.body }}</span>
+              </div>
+            </sc-for>
+            <span style="margin-top:auto; font-family:'Instrument Serif',serif; font-style:italic; font-size:15px; color:#6f7a6e; line-height:1.45;">Anh không cần tự chọn ảnh tốt nhất — AI chấm điểm và ghép giúp.</span>
+          </aside>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStep3 }}" hint-placeholder-val="{{ true }}">
+        <div style="height:100%; display:grid; grid-template-columns:clamp(150px,16vw,226px) minmax(0,1fr); gap:clamp(16px,2.6vw,44px); min-height:0;">
+          <div style="min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:4px;">
+            <sc-for list="{{ productRows }}" as="r" hint-placeholder-count="3">
+              <button onClick="{{ r.pick }}" style="display:grid; grid-template-columns:38px minmax(0,1fr) auto; gap:10px; align-items:center; border:none; background:{{ r.bg }}; padding:8px; cursor:pointer; font-family:inherit; text-align:left; width:100%;" style-hover="background:#f7f7f5;">
+                <span style="width:38px; height:48px; background:repeating-linear-gradient(45deg,#efeeeb 0 6px,#f9f9f7 6px 12px);"></span>
+                <span style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+                  <span style="font-size:12.5px; color:{{ r.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.code }}</span>
+                  <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#a9a9a2;">{{ r.grade }}</span>
+                </span>
+                <span style="font-family:'Geist Mono',monospace; font-size:12.5px; color:#8f8f88;">{{ r.score }}</span>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="min-height:0; display:flex; flex-direction:column; gap:clamp(10px,1.6vh,18px);">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:clamp(14px,2vw,30px);">
+              <sc-for list="{{ inputScores }}" as="c" hint-placeholder-count="3">
+                <div style="display:flex; flex-direction:column; gap:4px; min-width:0;">
+                  <span style="font-size:12.5px; color:#8f8f88;">{{ c.label }}</span>
+                  <span style="font-family:'Instrument Serif',serif; font-size:clamp(28px,3vw,42px); line-height:1;">{{ c.value }}</span>
+                  <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#7d9482;">{{ c.note }}</span>
+                </div>
+              </sc-for>
+            </div>
+            <div style="flex:1; min-height:0; display:grid; grid-template-columns:clamp(112px,12vw,164px) minmax(0,1fr); gap:clamp(16px,2.6vw,42px);">
+              <div style="display:flex; flex-direction:column; gap:8px; min-width:0;">
+                <div style="aspect-ratio:3/4; background:repeating-linear-gradient(45deg,#f1f0ed 0 6px,#f9f9f7 6px 12px);"></div>
+                <div style="display:flex; justify-content:space-between;"><span style="font-size:12.5px;">{{ pickedModel }}</span><span style="font-family:'Geist Mono',monospace; font-size:12.5px; color:#8f8f88;">93</span></div>
+                <button style="align-self:flex-start; border:none; background:transparent; padding:0; font-family:inherit; font-size:12.5px; color:#6f6f69; text-decoration:underline; text-underline-offset:3px; cursor:pointer;">Đổi người mẫu</button>
+              </div>
+              <div style="min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:10px;">
+                <span style="font-family:'Geist Mono',monospace; font-size:11.5px; letter-spacing:0.08em; text-transform:uppercase; color:#b0afa8;">AI ghi nhận</span>
+                <sc-for list="{{ notes }}" as="n" hint-placeholder-count="4">
+                  <span style="font-size:13px; color:#5c5c57; line-height:1.6; max-width:78ch; text-wrap:pretty;">{{ n.text }}</span>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStep4 }}" hint-placeholder-val="{{ true }}">
+        <div style="height:100%; display:grid; grid-template-columns:clamp(150px,16vw,226px) minmax(0,1fr) clamp(186px,20vw,268px); gap:clamp(16px,2.4vw,40px); min-height:0;">
+          <div style="min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:4px;">
+            <sc-for list="{{ queueRows }}" as="r" hint-placeholder-count="3">
+              <button onClick="{{ r.pick }}" style="display:grid; grid-template-columns:38px minmax(0,1fr); gap:10px; align-items:center; border:none; background:{{ r.bg }}; padding:8px; cursor:pointer; font-family:inherit; text-align:left; width:100%;" style-hover="background:#f7f7f5;">
+                <span style="width:38px; height:48px; background:repeating-linear-gradient(45deg,#efeeeb 0 6px,#f9f9f7 6px 12px);"></span>
+                <span style="display:flex; flex-direction:column; gap:2px; min-width:0;">
+                  <span style="font-size:12.5px; color:{{ r.fg }};">{{ r.name }}</span>
+                  <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#a9a9a2;">{{ r.version }}</span>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="min-height:0; min-width:0; display:grid; place-items:center;">
+            <div style="height:100%; max-width:100%; aspect-ratio:3/4; background:repeating-linear-gradient(45deg,#f1f0ed 0 8px,#f9f9f7 8px 16px); display:grid; place-items:center;">
+              <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#9c9b95;">kết quả AI · V1</span>
+            </div>
+          </div>
+
+          <aside style="display:flex; flex-direction:column; gap:13px; min-height:0; overflow-y:auto; overflow-x:hidden;">
+            <span style="font-family:'Instrument Serif',serif; font-size:18px; line-height:1.25; word-break:break-all;">{{ activeCode }}</span>
+            <sc-for list="{{ genMeta }}" as="m" hint-placeholder-count="5">
+              <div style="display:flex; align-items:baseline; justify-content:space-between; gap:12px;">
+                <span style="font-size:12.5px; color:#8f8f88;">{{ m.k }}</span>
+                <span style="font-family:'Geist Mono',monospace; font-size:12.5px;">{{ m.v }}</span>
+              </div>
+            </sc-for>
+            <button style="margin-top:auto; align-self:flex-start; border:none; background:transparent; padding:0; font-family:inherit; font-size:13px; color:#1a1a1c; text-decoration:underline; text-underline-offset:4px; cursor:pointer;">Tạo lại (còn 3 lần)</button>
+          </aside>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isStep5 }}" hint-placeholder-val="{{ true }}">
+        <div style="height:100%; display:grid; grid-template-columns:minmax(0,1fr) clamp(200px,21vw,284px); gap:clamp(16px,2.6vw,44px); min-height:0;">
+          <div style="display:flex; flex-direction:column; gap:10px; min-height:0; min-width:0;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; row-gap:8px;">
+              <div style="display:flex; gap:6px; min-width:0;">
+                <sc-for list="{{ qcChips }}" as="c" hint-placeholder-count="3">
+                  <button onClick="{{ c.pick }}" style="border:none; background:{{ c.bg }}; color:{{ c.fg }}; padding:6px 11px; font-family:'Geist Mono',monospace; font-size:11.5px; cursor:pointer;">{{ c.label }}</button>
+                </sc-for>
+              </div>
+              <span style="font-family:'Geist Mono',monospace; font-size:11.5px; color:#a9a9a2;">kéo thanh dọc để so sánh · {{ splitLabel }}</span>
+            </div>
+
+            <div onPointerDown="{{ onSplitDown }}" onPointerMove="{{ onSplitMove }}" onPointerUp="{{ onSplitUp }}" style="flex:1; min-height:0; min-width:0; position:relative; overflow:hidden; cursor:ew-resize; touch-action:none; background:repeating-linear-gradient(45deg,#f1f0ed 0 8px,#f9f9f7 8px 16px);">
+              <div style="position:absolute; inset:0; display:grid; place-items:center;">
+                <span style="font-family:'Geist Mono',monospace; font-size:12px; color:#9c9b95;">ẢNH AI</span>
+              </div>
+              <div style="position:absolute; inset:0; width:{{ splitPct }}; overflow:hidden; background:repeating-linear-gradient(135deg,#eceae6 0 8px,#f6f5f2 8px 16px);">
+                <div style="position:absolute; top:12px; left:12px; font-family:'Geist Mono',monospace; font-size:11.5px; color:#6f6f69; white-space:nowrap;">SẢN PHẨM GỐC</div>
+              </div>
+              <div style="position:absolute; top:0; bottom:0; left:{{ splitPct }}; width:1px; background:#1a1a1c;"></div>
+              <div style="position:absolute; top:50%; left:{{ splitPct }}; width:30px; height:30px; margin-left:-15px; margin-top:-15px; border-radius:50%; background:#1a1a1c; color:#fff; display:grid; place-items:center; font-size:11px;">⇄</div>
+              <div style="position:absolute; top:12px; right:12px; font-family:'Geist Mono',monospace; font-size:11.5px; color:#1a1a1c;">ẢNH AI · BẢN 1/4</div>
+            </div>
+          </div>
+
+          <aside style="display:flex; flex-direction:column; gap:13px; min-height:0;">
+            <div style="display:flex; align-items:baseline; justify-content:space-between;">
+              <span style="font-size:12.5px; color:#8f8f88;">Đánh giá của AI</span>
+              <span style="font-family:'Instrument Serif',serif; font-size:32px; line-height:1;">96</span>
+            </div>
+            <div style="flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:9px;">
+              <sc-for list="{{ qcScores }}" as="q" hint-placeholder-count="6">
+                <div style="display:flex; align-items:baseline; justify-content:space-between; gap:10px;">
+                  <span style="font-size:13px; color:#5c5c57;">{{ q.label }}</span>
+                  <span style="font-family:'Geist Mono',monospace; font-size:12.5px; color:#8f8f88;">{{ q.value }}</span>
+                </div>
+              </sc-for>
+              <span style="font-family:'Instrument Serif',serif; font-style:italic; font-size:15px; color:#84847e; line-height:1.45; margin-top:4px;">Quyết định cuối cùng là của anh.</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <button style="border:none; background:#1a1a1c; color:#fff; padding:12px; font-family:inherit; font-size:13.5px; font-weight:500; cursor:pointer;" style-hover="background:#000;">Duyệt &amp; tải ảnh</button>
+              <div style="display:flex; gap:16px;">
+                <button style="border:none; background:transparent; padding:0; font-family:inherit; font-size:12.5px; color:#6f6f69; text-decoration:underline; text-underline-offset:3px; cursor:pointer;">Tạo lại (3)</button>
+                <button style="border:none; background:transparent; padding:0; font-family:inherit; font-size:12.5px; color:#6f6f69; text-decoration:underline; text-underline-offset:3px; cursor:pointer;">Tải bản này</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </sc-if>
+
+    </div>
+  </section>
+
+  <footer style="width:100%; max-width:1360px; display:flex; align-items:center; justify-content:space-between; gap:20px; padding:clamp(10px,1.4vh,18px) 0 clamp(12px,1.8vh,22px);">
+    <span style="font-size:13px; color:#8f8f88;">{{ footerNote }}</span>
+    <div style="display:flex; align-items:center; gap:18px;">
+      <button onClick="{{ back }}" style="border:none; background:transparent; padding:0; font-family:inherit; font-size:13.5px; color:#6f6f69; cursor:pointer; visibility:{{ backVisible }};">← {{ backLabel }}</button>
+      <button onClick="{{ next }}" style="border:none; background:#1a1a1c; color:#fff; padding:12px 24px; font-family:inherit; font-size:13.5px; font-weight:500; cursor:pointer;" style-hover="background:#000;">{{ nextLabel }} →</button>
+    </div>
+  </footer>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+class Component extends DCLogic {
+  state = { step: 1, sel: 0, qc: 0, split: 50, dragging: false };
+
+  componentDidMount() {
+    this.onKey = (e) => {
+      if (e.target && /input|textarea/i.test(e.target.tagName)) return;
+      if (e.key === "ArrowRight") this.go(this.state.step + 1);
+      else if (e.key === "ArrowLeft") this.go(this.state.step - 1);
+      else if (/^[1-5]$/.test(e.key)) this.go(Number(e.key));
+    };
+    window.addEventListener("keydown", this.onKey);
+  }
+  componentWillUnmount() { window.removeEventListener("keydown", this.onKey); }
+
+  go(n) { this.setState({ step: Math.min(5, Math.max(1, n)) }); }
+
+  setSplit(e) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const pct = Math.min(97, Math.max(3, ((e.clientX - r.left) / r.width) * 100));
+    this.setState({ split: pct });
+  }
+
+  data() {
+    return [
+      { code: "596935336 705647909266770", grade: "Xuất sắc", score: "97", name: "Product 01" },
+      { code: "884201773 118904553201884", grade: "Tốt", score: "88", name: "Product 02" },
+      { code: "410778902 665320117904410", grade: "Xuất sắc", score: "94", name: "Product 03" },
+    ];
+  }
+
+  meta() {
+    return [
+      { n: 1, label: "Ảnh sản phẩm", title: "Chọn ảnh sản phẩm", subtitle: "Chọn 1–5 ảnh chính. Mỗi ảnh chính trở thành một sản phẩm riêng.", counter: "3/5", counterLabel: "sản phẩm", next: "Ảnh người mẫu", back: "", note: "3 sản phẩm đã sẵn sàng." },
+      { n: 2, label: "Người mẫu", title: "Ảnh người mẫu dùng chung", subtitle: "Tải 1–10 ảnh. AI tự chọn người mẫu hợp nhất cho từng sản phẩm.", counter: "3/10", counterLabel: "ảnh mẫu", next: "Phân tích 3 sản phẩm", back: "Ảnh sản phẩm", note: "3 ảnh người mẫu dùng chung cho 3 sản phẩm." },
+      { n: 3, label: "Kiểm tra", title: "AI kiểm tra đầu vào", subtitle: "Điểm số chỉ là lời khuyên. Sản phẩm điểm thấp vẫn tạo thử được.", counter: "3/3", counterLabel: "đã chấm", next: "Tạo ảnh", back: "Người mẫu", note: "Đã chấm 3/3 sản phẩm." },
+      { n: 4, label: "Tạo ảnh", title: "Tạo ảnh cho từng sản phẩm", subtitle: "Ảnh lưu tự động, tối đa 4 phiên bản mỗi sản phẩm.", counter: "3/3", counterLabel: "hoàn tất", next: "Quality Control", back: "Kiểm tra", note: "3/3 sản phẩm đã có ảnh." },
+      { n: 5, label: "Quality Control", title: "Quality Control", subtitle: "Kéo thanh giữa khung để so sánh sản phẩm gốc với ảnh AI.", counter: "0/3", counterLabel: "đã duyệt", next: "Tải ảnh đã duyệt", back: "Tạo ảnh", note: "0/3 sản phẩm đã duyệt." },
+    ];
+  }
+
+  renderVals() {
+    const { step, sel, qc, split } = this.state;
+    const m = this.meta(), cur = m[step - 1], items = this.data();
+    const active = items[sel] || items[0];
+
+    return {
+      steps: m.map((s) => ({
+        n: s.n, label: s.label,
+        bar: s.n <= step ? "#1a1a1c" : "#ececea",
+        fg: s.n === step ? "#1a1a1c" : "#a9a9a2",
+        numFg: s.n === step ? "#8f8f88" : "#c2c1ba",
+        go: () => this.go(s.n),
+      })),
+      title: cur.title, subtitle: cur.subtitle, counter: cur.counter, counterLabel: cur.counterLabel,
+      footerNote: cur.note, nextLabel: cur.next, backLabel: cur.back || "Quay lại",
+      backVisible: step === 1 ? "hidden" : "visible",
+      isStep1: step === 1, isStep2: step === 2, isStep3: step === 3, isStep4: step === 4, isStep5: step === 5,
+      next: () => this.go(step + 1), back: () => this.go(step - 1),
+
+      products: items.map((p, i) => ({ idx: String(i + 1).padStart(2, "0"), code: p.code })),
+      slotsLeft: "còn " + (5 - items.length) + " chỗ",
+      models: [{ label: "MẪU 1" }, { label: "MẪU 2" }, { label: "MẪU 3" }],
+      productRows: items.map((p, i) => ({
+        code: p.code, grade: p.grade, score: p.score,
+        bg: i === sel ? "#f4f4f1" : "transparent",
+        fg: i === sel ? "#1a1a1c" : "#5c5c57",
+        pick: () => this.setState({ sel: i }),
+      })),
+      queueRows: items.map((p, i) => ({
+        name: p.name, version: "V1 · 1/4",
+        bg: i === sel ? "#f4f4f1" : "transparent",
+        fg: i === sel ? "#1a1a1c" : "#5c5c57",
+        pick: () => this.setState({ sel: i }),
+      })),
+      activeCode: active.code,
+      pickedModel: "Mẫu " + (sel + 1),
+
+      tips: [
+        { title: "Thấy rõ toàn thân", body: "Không cắt chân, tay hoặc phần trang phục quan trọng." },
+        { title: "Đứng tự nhiên", body: "Ít che thân người, góc máy chính diện hoặc chếch 3/4." },
+        { title: "Ảnh đủ sáng, nét", body: "Nền đơn giản giúp AI giữ đúng người mẫu hơn." },
+      ],
+      inputScores: [
+        { label: "Ảnh người mẫu", value: "5/5", note: "97/100" },
+        { label: "Ảnh sản phẩm", value: "5/5", note: active.score + "/100" },
+        { label: "Mức tương thích", value: "5/5", note: "93/100" },
+      ],
+      notes: [
+        { text: "Trang phục dựa trên nhiều lớp vải xếp chéo và nếp cowl sâu — cần giữ đúng thế bất đối xứng." },
+        { text: "Vải bóng tạo nếp gấp dày, dễ bị làm phẳng hoặc cứng khi tái tạo." },
+        { text: "Người mẫu tham chiếu có thân trên dài hơn — độ sâu nếp và điểm gấu cần điều chỉnh." },
+        { text: "Chỉ có góc chính diện và 3/4; phần lưng, khóa sau chưa được ghi nhận." },
+      ],
+      genMeta: [
+        { k: "Trạng thái", v: "Needs review" }, { k: "Ảnh tham chiếu", v: "1" },
+        { k: "Người mẫu", v: "Mẫu " + (sel + 1) }, { k: "Phiên bản", v: "1/4" }, { k: "Còn tạo lại", v: "3" },
+      ],
+      qcChips: items.map((p, i) => ({
+        label: p.name.toUpperCase(),
+        bg: i === qc ? "#1a1a1c" : "#f4f4f1",
+        fg: i === qc ? "#ffffff" : "#6f6f69",
+        pick: () => this.setState({ qc: i }),
+      })),
+      qcScores: [
+        { label: "Phom dáng", value: "24/25" }, { label: "Chi tiết may", value: "23/25" },
+        { label: "Độ dài & tỷ lệ", value: "14/15" }, { label: "Màu & chất liệu", value: "15/15" },
+        { label: "Giữ đúng người mẫu", value: "10/10" }, { label: "Giữ góc máy & cảnh", value: "10/10" },
+      ],
+      splitPct: split.toFixed(1) + "%",
+      splitLabel: Math.round(split) + "%",
+      onSplitDown: (e) => { e.currentTarget.setPointerCapture(e.pointerId); this.setState({ dragging: true }); this.setSplit(e); },
+      onSplitMove: (e) => { if (this.state.dragging) this.setSplit(e); },
+      onSplitUp: () => this.setState({ dragging: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>
