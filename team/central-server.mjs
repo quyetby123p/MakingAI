@@ -69,10 +69,20 @@ function bearer(req, name = "authorization") {
   return String(value).replace(/^Bearer\s+/i, "").trim();
 }
 
-function userFromRequest(req) {
-  const user = store.session(bearer(req));
-  if (!user) throw Object.assign(new Error("Phiên đã hết hạn. Nhập lại mã cá nhân."), { status: 401, code: "session_expired" });
-  return user;
+function cookieValue(req, key) {
+  const cookies = String(req.headers.cookie || "").split(";").map(item => item.trim());
+  const prefix = `${key}=`;
+  const found = cookies.find(item => item.startsWith(prefix));
+  return found ? decodeURIComponent(found.slice(prefix.length)) : "";
+}
+
+function userFromRequest(req, url = null) {
+  const candidates = [bearer(req), cookieValue(req, "studio_session"), url?.searchParams?.get("token")].filter(Boolean);
+  for (const candidate of candidates) {
+    const user = store.session(candidate);
+    if (user) return user;
+  }
+  throw Object.assign(new Error("Phiên đã hết hạn. Nhập lại mã cá nhân."), { status: 401, code: "session_expired" });
 }
 
 function helperFromRequest(req) {
@@ -99,7 +109,7 @@ function estimateJobSeconds(productCount, modelCount) {
 
 function publicJob(job) {
   return {
-    id: job.id, status: job.status, name: job.name, createdAt: job.createdAt, updatedAt: job.updatedAt,
+    id: job.id, status: job.status, name: job.name, project: job.project || null, createdAt: job.createdAt, updatedAt: job.updatedAt,
     retryRequests: job.retryRequests || [], errors: job.errors || [], drive: job.drive || null,
     estimatedSeconds: job.estimatedSeconds || null, startedAt: job.startedAt || null, finishedAt: job.finishedAt || null,
     products: (job.products || []).map(product => ({
@@ -150,7 +160,7 @@ async function handle(req, res) {
     const sessionToken = store.createSession(user.id);
     store.audit("session.claimed", user.id, user.id);
     store.save();
-    return json(res, 200, { token: sessionToken, user: { id: user.id, name: user.name }, helpers: store.listHelpers(user.id) });
+    return json(res, 200, { token: sessionToken, user: { id: user.id, name: user.name }, helpers: store.listHelpers(user.id) }, { "set-cookie": `studio_session=${encodeURIComponent(sessionToken)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(Number(process.env.STUDIO_SESSION_TTL_MS || 8 * 60 * 60 * 1000) / 1000)}` });
   }
 
   if (pathname.startsWith("/internal/")) {
@@ -233,7 +243,7 @@ async function handle(req, res) {
     return json(res, 200, { user: updated });
   }
 
-  const user = userFromRequest(req);
+  const user = userFromRequest(req, url);
   markOldHelpersOffline();
 
   if (req.method === "GET" && pathname === "/api/me") return json(res, 200, { user: { id: user.id, name: user.name }, helpers: store.listHelpers(user.id), drive: driveStatus() });
@@ -246,14 +256,15 @@ async function handle(req, res) {
     const body = await readBody(req);
     if (!Array.isArray(body.products) || !body.products.length || body.products.length > maxProducts) throw Object.assign(new Error(`Mỗi job cần từ 1 đến ${maxProducts} sản phẩm.`), { status: 400, code: "invalid_product_count" });
     validateImages(body.modelImages, maxModels, "Ảnh model");
-    const jobId = `job_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
+    const projectName = String(body.name || "Studio Flow project").slice(0, 120);
+    const jobId = `job_${safeName(projectName, "project")}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
     const inputModelFiles = body.modelImages.map((value, index) => saveDataUrl(jobId, "inputs", `model-${index + 1}`, value));
     const products = body.products.map((item, index) => {
       const refs = Array.isArray(item.productImages) ? item.productImages : [];
       validateImages(refs, maxProductViews, `Ảnh sản phẩm ${index + 1}`);
       return { id: `product_${index + 1}`, name: String(item.name || `Sản phẩm ${index + 1}`).slice(0, 100), inputFiles: refs.map((value, refIndex) => saveDataUrl(jobId, "inputs", `product-${index + 1}-view-${refIndex + 1}`, value)), status: "WAITING", evaluation: null, selectedModel: null, outputs: [], lastQc: null, error: null };
     });
-    const job = store.createJob({ id: jobId, ownerId: user.id, name: String(body.name || "Studio Flow job").slice(0, 120), status: "WAITING_FOR_HELPER", helperId: null, input: { modelImages: inputModelFiles }, products, retryRequests: [], errors: [], drive: null, estimatedSeconds: estimateJobSeconds(body.products.length, body.modelImages.length), jobDir: path.join(jobsRoot, jobId) });
+    const job = store.createJob({ id: jobId, ownerId: user.id, name: projectName, project: { name: projectName, storageKey: safeName(jobId) }, status: "WAITING_FOR_HELPER", helperId: null, input: { modelImages: inputModelFiles }, products, retryRequests: [], errors: [], drive: null, estimatedSeconds: estimateJobSeconds(body.products.length, body.modelImages.length), jobDir: path.join(jobsRoot, safeName(jobId)) });
     return json(res, 201, { job: publicJob(job) });
   }
 
