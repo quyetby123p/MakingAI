@@ -10,7 +10,7 @@ function token() { return crypto.randomBytes(32).toString("base64url"); }
 function equalHash(a, b) { return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b)); }
 
 function emptyState() {
-  return { version: 1, users: [], helpers: [], sessions: [], jobs: [], assets: [], audit: [] };
+  return { version: 1, users: [], helpers: [], sessions: [], projects: [], jobs: [], assets: [], audit: [] };
 }
 
 function parseConfiguredUsers() {
@@ -118,6 +118,30 @@ export class JsonStore {
     }));
   }
 
+  createProject(project) {
+    const value = { id: id("project"), createdAt: now(), updatedAt: now(), ...project };
+    this.state.projects.unshift(value);
+    this.audit("project.created", value.ownerId, value.id);
+    this.save();
+    return value;
+  }
+
+  getProject(projectId) { return this.state.projects.find(project => project.id === projectId) || null; }
+  listProjects(ownerId = null) { return this.state.projects.filter(project => !ownerId || project.ownerId === ownerId); }
+
+  projectForUser(projectId, ownerId) {
+    const project = this.getProject(projectId);
+    return project && project.ownerId === ownerId ? project : null;
+  }
+
+  deleteProject(projectId, ownerId = null) {
+    const index = this.state.projects.findIndex(project => project.id === projectId && (!ownerId || project.ownerId === ownerId));
+    if (index < 0) return null;
+    const [project] = this.state.projects.splice(index, 1);
+    this.save();
+    return project;
+  }
+
   createJob(job) {
     const value = { id: id("job"), createdAt: now(), updatedAt: now(), ...job };
     this.state.jobs.unshift(value);
@@ -141,11 +165,13 @@ export class JsonStore {
     const jobs = this.listJobs(ownerId);
     for (const job of jobs) this.deleteJobFiles(job.id);
     this.state.jobs = this.state.jobs.filter(job => job.ownerId !== ownerId);
+    const projects = this.listProjects(ownerId);
+    this.state.projects = this.state.projects.filter(project => project.ownerId !== ownerId);
     const assets = this.state.assets.filter(asset => asset.ownerId === ownerId);
     this.state.assets = this.state.assets.filter(asset => asset.ownerId !== ownerId);
-    this.audit("account.data_reset", ownerId, ownerId, { jobs: jobs.length, assets: assets.length });
+    this.audit("account.data_reset", ownerId, ownerId, { projects: projects.length, jobs: jobs.length, assets: assets.length });
     this.save();
-    return { jobs: jobs.length, assets: assets.length };
+    return { projects: projects.length, jobs: jobs.length, assets: assets.length };
   }
 
   updateJob(jobId, patch) {

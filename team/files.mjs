@@ -14,7 +14,8 @@ export function dataUrlFromBuffer(buffer, mime = "image/png") {
 
 export function saveDataUrl(jobId, subdir, filename, value) {
   const parsed = parseDataUrl(value);
-  const dir = path.join(jobsRoot, safeName(jobId), safeName(subdir));
+  const containerParts = String(jobId || "job").split(/[\\/]+/).filter(Boolean).map(part => safeName(part));
+  const dir = path.join(jobsRoot, ...containerParts, safeName(subdir));
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${safeName(path.parse(filename || "image").name)}.${mimeExtension(parsed.mime)}`);
   fs.writeFileSync(file, parsed.buffer);

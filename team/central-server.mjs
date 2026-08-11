@@ -107,9 +107,19 @@ function estimateJobSeconds(productCount, modelCount) {
   return Math.max(90, 45 + productCount * (90 + modelCount * 4));
 }
 
+function publicProject(project) {
+  const jobs = store.listJobs(project.ownerId).filter(job => job.projectId === project.id);
+  return {
+    id: project.id, name: project.name, storageKey: project.storageKey,
+    createdAt: project.createdAt, updatedAt: project.updatedAt,
+    jobCount: jobs.length,
+    latestJobAt: jobs.map(job => job.updatedAt || job.createdAt).sort().at(-1) || null
+  };
+}
+
 function publicJob(job) {
   return {
-    id: job.id, status: job.status, name: job.name, project: job.project || null, createdAt: job.createdAt, updatedAt: job.updatedAt,
+    id: job.id, status: job.status, name: job.name, projectId: job.projectId || null, project: job.project || null, createdAt: job.createdAt, updatedAt: job.updatedAt,
     retryRequests: job.retryRequests || [], errors: job.errors || [], drive: job.drive || null,
     estimatedSeconds: job.estimatedSeconds || null, startedAt: job.startedAt || null, finishedAt: job.finishedAt || null,
     products: (job.products || []).map(product => ({
@@ -125,6 +135,29 @@ function publicJob(job) {
       }))
     }))
   };
+}
+
+function ensureLegacyProjects(userId) {
+  let changed = false;
+  for (const job of store.listJobs(userId)) {
+    if (job.projectId) continue;
+    const legacy = job.project || { name: job.name || "Project cũ", storageKey: safeName(job.id) };
+    let project = store.listProjects(userId).find(item => item.storageKey === legacy.storageKey);
+    if (!project) {
+      project = store.createProject({
+        id: `project_${safeName(legacy.storageKey || job.id)}`,
+        ownerId: userId,
+        name: legacy.name || job.name || "Project cũ",
+        storageKey: safeName(legacy.storageKey || job.id),
+        source: "legacy-job"
+      });
+    }
+    job.projectId = project.id;
+    job.project = { id: project.id, name: project.name, storageKey: project.storageKey };
+    job.jobDir = job.jobDir || path.join(jobsRoot, project.storageKey, safeName(job.id));
+    changed = true;
+  }
+  if (changed) store.save();
 }
 
 function jobPayloadForHelper(job) {
@@ -194,7 +227,7 @@ async function handle(req, res) {
       const body = await readBody(req);
       const job = store.getJob(body.jobId);
       if (!job || job.ownerId !== user.id) throw Object.assign(new Error("Job không thuộc helper này."), { status: 404, code: "job_not_found" });
-      const jobDir = path.join(jobsRoot, safeName(job.id), "outputs");
+      const jobDir = path.join(job.jobDir || path.join(jobsRoot, safeName(job.id)), "outputs");
       fs.mkdirSync(jobDir, { recursive: true });
       const products = job.products || [];
       const errors = [];
@@ -209,7 +242,8 @@ async function handle(req, res) {
         product.evaluation = result.evaluation || product.evaluation;
         product.selectedModel = result.selectedModel ?? product.selectedModel;
         if (!evaluationOnly && result.output?.dataUrl) {
-          const file = saveDataUrl(job.id, "outputs", `${product.id}-v${(product.outputs?.length || 0) + 1}`, result.output.dataUrl);
+          const containerKey = job.project?.storageKey ? `${job.project.storageKey}/${safeName(job.id)}` : job.id;
+          const file = saveDataUrl(containerKey, "outputs", `${product.id}-v${(product.outputs?.length || 0) + 1}`, result.output.dataUrl);
           const out = { version: (product.outputs?.length || 0) + 1, path: file, qc: result.qc || null, selected: true, createdAt: new Date().toISOString() };
           product.outputs = (product.outputs || []).map(item => ({ ...item, selected: false }));
           product.outputs.push(out);
@@ -248,23 +282,71 @@ async function handle(req, res) {
 
   if (req.method === "GET" && pathname === "/api/me") return json(res, 200, { user: { id: user.id, name: user.name }, helpers: store.listHelpers(user.id), drive: driveStatus() });
   if (req.method === "GET" && pathname === "/api/status") return json(res, 200, { ok: true, helpers: store.listHelpers(user.id), drive: driveStatus() });
-  if (req.method === "GET" && pathname === "/api/jobs") return json(res, 200, { jobs: store.listJobs(user.id).map(publicJob) });
+  if (req.method === "GET" && pathname === "/api/projects") {
+    ensureLegacyProjects(user.id);
+    return json(res, 200, { projects: store.listProjects(user.id).map(publicProject) });
+  }
+  if (req.method === "POST" && pathname === "/api/projects") {
+    const body = await readBody(req);
+    const name = String(body.name || "").trim().slice(0, 120);
+    if (!name) throw Object.assign(new Error("Cần nhập tên project."), { status: 400, code: "project_name_required" });
+    const project = store.createProject({
+      ownerId: user.id,
+      name,
+      storageKey: `${safeName(name, "project")}_${Date.now().toString(36)}_${crypto.randomBytes(3).toString("hex")}`
+    });
+    return json(res, 201, { project: publicProject(project) });
+  }
+  if (req.method === "GET" && pathname === "/api/jobs") {
+    ensureLegacyProjects(user.id);
+    const projectId = url.searchParams.get("projectId");
+    const jobs = store.listJobs(user.id).filter(job => !projectId || job.projectId === projectId);
+    return json(res, 200, { jobs: jobs.map(publicJob) });
+  }
   if (req.method === "GET" && pathname === "/api/assets") return json(res, 200, { assets: store.listAssets() });
   if (req.method === "POST" && pathname === "/api/account/reset") return json(res, 200, { ok: true, removed: store.resetUserData(user.id) });
 
+  const projectMatch = pathname.match(/^\/api\/projects\/([^/]+)$/);
+  if (projectMatch) {
+    const project = store.projectForUser(projectMatch[1], user.id);
+    if (!project) throw Object.assign(new Error("Không tìm thấy project."), { status: 404, code: "project_not_found" });
+    if (req.method === "GET") return json(res, 200, { project: publicProject(project) });
+    if (req.method === "DELETE") {
+      for (const job of store.listJobs(user.id).filter(item => item.projectId === project.id)) {
+        store.deleteJobFiles(job.id);
+        store.deleteJob(job.id, user.id);
+      }
+      store.deleteProject(project.id, user.id);
+      store.audit("project.deleted", user.id, project.id);
+      store.save();
+      return json(res, 200, { ok: true, projectId: project.id });
+    }
+  }
+
   if (req.method === "POST" && pathname === "/api/jobs") {
     const body = await readBody(req);
-    if (!Array.isArray(body.products) || !body.products.length || body.products.length > maxProducts) throw Object.assign(new Error(`Mỗi job cần từ 1 đến ${maxProducts} sản phẩm.`), { status: 400, code: "invalid_product_count" });
+    if (!Array.isArray(body.products) || !body.products.length || body.products.length > maxProducts) throw Object.assign(new Error(`Mỗi lần tạo cần từ 1 đến ${maxProducts} sản phẩm.`), { status: 400, code: "invalid_product_count" });
     validateImages(body.modelImages, maxModels, "Ảnh model");
-    const projectName = String(body.name || "Studio Flow project").slice(0, 120);
+    let project = body.projectId ? store.projectForUser(String(body.projectId), user.id) : null;
+    if (body.projectId && !project) throw Object.assign(new Error("Project đã chọn không tồn tại hoặc không thuộc tài khoản này."), { status: 404, code: "project_not_found" });
+    const projectName = String(body.name || project?.name || "Studio Flow project").slice(0, 120);
+    if (!project) {
+      project = store.createProject({
+        ownerId: user.id,
+        name: projectName,
+        storageKey: `${safeName(projectName, "project")}_${Date.now().toString(36)}_${crypto.randomBytes(3).toString("hex")}`
+      });
+    }
+    const jobName = String(body.runName || body.batchName || project.name).slice(0, 120);
     const jobId = `job_${safeName(projectName, "project")}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
-    const inputModelFiles = body.modelImages.map((value, index) => saveDataUrl(jobId, "inputs", `model-${index + 1}`, value));
+    const jobStorageKey = `${project.storageKey}/${safeName(jobId)}`;
+    const inputModelFiles = body.modelImages.map((value, index) => saveDataUrl(jobStorageKey, "inputs", `model-${index + 1}`, value));
     const products = body.products.map((item, index) => {
       const refs = Array.isArray(item.productImages) ? item.productImages : [];
       validateImages(refs, maxProductViews, `Ảnh sản phẩm ${index + 1}`);
-      return { id: `product_${index + 1}`, name: String(item.name || `Sản phẩm ${index + 1}`).slice(0, 100), inputFiles: refs.map((value, refIndex) => saveDataUrl(jobId, "inputs", `product-${index + 1}-view-${refIndex + 1}`, value)), status: "WAITING", evaluation: null, selectedModel: null, outputs: [], lastQc: null, error: null };
+      return { id: `product_${index + 1}`, name: String(item.name || `Sản phẩm ${index + 1}`).slice(0, 100), inputFiles: refs.map((value, refIndex) => saveDataUrl(jobStorageKey, "inputs", `product-${index + 1}-view-${refIndex + 1}`, value)), status: "WAITING", evaluation: null, selectedModel: null, outputs: [], lastQc: null, error: null };
     });
-    const job = store.createJob({ id: jobId, ownerId: user.id, name: projectName, project: { name: projectName, storageKey: safeName(jobId) }, status: "WAITING_FOR_HELPER", helperId: null, input: { modelImages: inputModelFiles }, products, retryRequests: [], errors: [], drive: null, estimatedSeconds: estimateJobSeconds(body.products.length, body.modelImages.length), jobDir: path.join(jobsRoot, safeName(jobId)) });
+    const job = store.createJob({ id: jobId, ownerId: user.id, name: jobName, projectId: project.id, project: { id: project.id, name: project.name, storageKey: project.storageKey }, status: "WAITING_FOR_HELPER", helperId: null, input: { modelImages: inputModelFiles }, products, retryRequests: [], errors: [], drive: null, estimatedSeconds: estimateJobSeconds(body.products.length, body.modelImages.length), jobDir: path.join(jobsRoot, project.storageKey, safeName(jobId)) });
     return json(res, 201, { job: publicJob(job) });
   }
 
@@ -344,7 +426,7 @@ async function handle(req, res) {
     const product = job.products.find(item => item.id === outputMatch[2]);
     const output = [...(product?.outputs || [])].reverse().find(item => item.selected !== false) || product?.outputs?.at(-1);
     if (!output?.path || !fs.existsSync(output.path)) return json(res, 404, { error: "Chưa có ảnh kết quả." });
-    const preview = url.searchParams.get("preview") === "1" ? path.join(jobsRoot, safeName(job.id), "previews", `${safeName(product.id)}-output.jpg`) : null;
+    const preview = url.searchParams.get("preview") === "1" ? path.join(job.jobDir || path.join(jobsRoot, safeName(job.id)), "previews", `${safeName(product.id)}-output.jpg`) : null;
     return sendImage(res, output.path, preview);
   }
 
@@ -353,7 +435,7 @@ async function handle(req, res) {
     const job = jobForUser(modelReferenceMatch[1], user.id);
     const file = job.input?.modelImages?.[Number(modelReferenceMatch[2])];
     if (!file || !fs.existsSync(file)) return json(res, 404, { error: "Không tìm thấy ảnh model gốc." });
-    const preview = url.searchParams.get("preview") === "1" ? path.join(jobsRoot, safeName(job.id), "previews", `model-${modelReferenceMatch[2]}.jpg`) : null;
+    const preview = url.searchParams.get("preview") === "1" ? path.join(job.jobDir || path.join(jobsRoot, safeName(job.id)), "previews", `model-${modelReferenceMatch[2]}.jpg`) : null;
     return sendImage(res, file, preview);
   }
 
