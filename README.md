@@ -86,6 +86,15 @@ Mở http://127.0.0.1:4173
 
 Windows có thể bấm thẳng `start-studio-flow.bat`.
 
+### Tuỳ chọn luồng nhanh
+
+Trên timeline, có thể bật riêng lựa chọn **Bỏ qua** ngay cùng dòng với bước **Kiểm tra** hoặc **Quality Control**:
+
+- **Tạo thẳng, bỏ chấm đầu vào:** không gọi evaluator; ghép theo thứ tự 1–1 (Sản phẩm 01 → Mẫu 01, Sản phẩm 02 → Mẫu 02…). Chế độ này cần số ảnh mẫu ít nhất bằng số sản phẩm.
+- **Bỏ AI Quality Control:** lưu kết quả ngay sau khi tạo và bỏ lượt chấm QC.
+
+Hai lựa chọn này chỉ bỏ chấm điểm. Kiểm tra an toàn bắt buộc của dịch vụ tạo ảnh vẫn luôn được giữ.
+
 ---
 
 ## Biến môi trường
@@ -96,6 +105,10 @@ Windows có thể bấm thẳng `start-studio-flow.bat`.
 | `STUDIO_PORT` | `4173` | Cổng phục vụ |
 | `OPENAI_API_KEY` | — | Chỉ cần khi `STUDIO_BACKEND=api` |
 | `CODEX_CLI_PATH` | tự dò | Chỉ đường tới `codex` nếu dò không ra |
+| `STUDIO_EVAL_MODEL` | `gpt-5.6-sol` | Model chấm ảnh. Phải là model tài khoản ChatGPT dùng được |
+| `STUDIO_EVAL_EFFORT` | `low` | Mức suy luận khi chấm: `low`/`medium`/`high`/`xhigh` |
+| `STUDIO_RENDER_MODEL` | `gpt-5.6-sol` | Model tạo ảnh. **Phải là model có công cụ `image_gen`** — tính đến 08/2026 chỉ `gpt-5.6-sol` có, và cần gói ChatGPT trả phí. Gói free hoặc model khác sẽ báo "Codex không tạo output.png" |
+| `STUDIO_RENDER_EFFORT` | `medium` | Mức suy luận khi tạo ảnh |
 | `STUDIO_EVAL_TIMEOUT_MS` | `360000` | Hạn giờ mỗi lượt chấm |
 | `STUDIO_RENDER_TIMEOUT_MS` | `600000` | Hạn giờ mỗi lượt tạo ảnh |
 | `STUDIO_KEEP_JOBS` | `false` | Đặt `true` để giữ `.codex-jobs/` mà xem prompt đã gửi |
@@ -112,7 +125,9 @@ Cố định trong mã, đổi thì phải sửa cả `server.mjs` lẫn `studio
 - Mỗi sản phẩm **1 ảnh chính + tối đa 7 góc bổ sung**
 - **1–10 ảnh người mẫu**, dùng chung cho mọi sản phẩm trong lượt
 - **4 phiên bản** mỗi sản phẩm: bản đầu + 3 lần tạo lại
-- Điểm đầu vào chỉ mang tính tư vấn — **ảnh điểm thấp vẫn tạo được**
+- Điểm chất lượng đầu vào chỉ mang tính tư vấn — **ảnh điểm thấp vẫn được gửi tạo thử**
+- Nếu kiểm tra an toàn chặn ảnh, hệ thống dừng sau lần đầu và yêu cầu đổi prompt/ảnh; không tự gửi lại cùng yêu cầu
+- App không có bộ lọc loại trang phục riêng. Tuy nhiên backend OpenAI/Codex vẫn áp dụng kiểm tra an toàn bắt buộc ở đầu vào và đầu ra; dự án không thể tắt lớp này.
 
 ---
 
@@ -120,7 +135,7 @@ Cố định trong mã, đổi thì phải sửa cả `server.mjs` lẫn `studio
 
 Vào `generated/` cạnh `server.mjs`, đặt tên theo `<tên-sản-phẩm>-<thời-gian-UTC>.png`. Thư mục này bị `.gitignore` loại trừ.
 
-Phiên làm việc lưu trong IndexedDB của trình duyệt, nên tải lại trang không mất việc đang dở.
+Phiên làm việc lưu trong IndexedDB của trình duyệt, nên tải lại trang không mất việc đang dở. Ảnh kết quả chỉ lưu một bản trong `generated/`; frontend giữ URL file thay vì chép thêm PNG base64 vào session.
 
 ---
 

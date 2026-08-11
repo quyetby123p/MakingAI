@@ -19,6 +19,21 @@ const evaluatorLabel = backend === "codex" ? "gói ChatGPT qua Codex" : visionMo
 const jobsRoot = path.join(root, ".codex-jobs");
 const keepJobs = process.env.STUDIO_KEEP_JOBS === "true";
 
+// Pin the model and reasoning depth per job. Without this we inherit whatever sits
+// in ~/.codex/config.toml, which follows whatever the ChatGPT app was last set to —
+// and a model the app allows is not always one a ChatGPT account may drive from the
+// CLI. Scoring runs up to ten times per product and only applies a fixed rubric, so
+// it stays at shallow depth to contain latency. Rendering runs once and is the shot
+// that matters, so both paths can use the flagship model without forcing deep reasoning.
+// Rendering must use a model that carries the built-in image_gen tool. As of
+// 2026-08, only gpt-5.6-sol does, and only on a paid ChatGPT plan — terra, luna and
+// 5.5 all report `tools.image_gen is not a function`. Scoring only needs view_image,
+// which every model has.
+const evalModel = process.env.STUDIO_EVAL_MODEL || "gpt-5.6-sol";
+const evalEffort = process.env.STUDIO_EVAL_EFFORT || "low";
+const renderModel = process.env.STUDIO_RENDER_MODEL || "gpt-5.6-sol";
+const renderEffort = process.env.STUDIO_RENDER_EFFORT || "medium";
+
 function findCodex() {
   const explicit = process.env.CODEX_CLI_PATH;
   if (explicit && fs.existsSync(explicit)) return explicit;
@@ -55,11 +70,12 @@ function findCodex() {
 }
 
 // Chạy codex exec trong một thư mục job riêng. Agent ghi kết quả ra file, không parse stdout.
-function codexExec(prompt, workdir, timeoutMs) {
+function codexExec(prompt, workdir, timeoutMs, model, effort) {
   return new Promise((resolve, reject) => {
     const bin = findCodex();
     if (!bin) return reject(Object.assign(new Error("Không tìm thấy codex.exe. Cài ChatGPT/Codex hoặc đặt CODEX_CLI_PATH."), { status: 503 }));
-    const child = spawn(bin, ["exec", "--sandbox", "workspace-write", "--skip-git-repo-check", "-C", workdir, prompt], {
+    const child = spawn(bin, ["exec", "--sandbox", "workspace-write", "--skip-git-repo-check",
+      "-m", model, "-c", `model_reasoning_effort="${effort}"`, "-C", workdir, prompt], {
       env: { ...process.env, NO_COLOR: "1" },
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true
@@ -82,6 +98,59 @@ function codexExec(prompt, workdir, timeoutMs) {
       else reject(Object.assign(new Error(`Codex thoát với mã ${code}. ${(err || out).slice(-400)}`), { status: 502 }));
     });
   });
+}
+
+// codex exec can exit cleanly without producing the file we asked for — a missing
+// tool, a refusal. The agent always says why in its closing message, so carry that
+// into the error instead of leaving the user with a blank "it didn't work".
+function lastWords(log) {
+  const text = String(log || "").replace(/\r/g, "").trim();
+  if (!text) return "";
+  const tail = text.split(/\n\s*\n/).filter(Boolean).pop() || "";
+  return tail.replace(/\s+/g, " ").trim().slice(-300);
+}
+
+const publicModerationMessage = stage => stage === "input"
+  ? "OpenAI đã chặn ảnh hoặc mô tả tại bước kiểm tra đầu vào. App không có quyền tắt lớp kiểm tra này; hãy đổi ảnh đầu vào hoặc dùng một dịch vụ tạo ảnh khác phù hợp hơn."
+  : stage === "output"
+    ? "OpenAI đã chặn kết quả tạo thử ở bước kiểm tra đầu ra. Hệ thống đã dừng và không tự gửi lại cùng một yêu cầu."
+    : "OpenAI đã chặn yêu cầu tạo ảnh. App không có quyền tắt lớp kiểm tra này; hãy đổi đầu vào hoặc dùng một dịch vụ tạo ảnh khác phù hợp hơn.";
+
+function moderationError({ stage = "unknown", categories = [], requestId = null } = {}) {
+  const safeStage = ["input", "output", "unknown"].includes(stage) ? stage : "unknown";
+  const safeCategories = Array.isArray(categories)
+    ? categories.map(String).filter(Boolean).slice(0, 4)
+    : [];
+  const error = Object.assign(new Error(publicModerationMessage(safeStage)), {
+    status: 422,
+    code: "moderation_blocked",
+    type: "image_generation_user_error",
+    moderationDetails: { moderation_stage: safeStage, categories: safeCategories },
+    retryable: false
+  });
+  if (requestId) error.requestId = String(requestId);
+  return error;
+}
+
+function moderationFromLog(log) {
+  const text = String(log || "");
+  if (!/(moderation|safety (?:filter|check)|image generation refused|image_gen refuses?)/i.test(text)) return null;
+  const categories = ["sexual", "harassment", "self-harm", "violence"].filter(category =>
+    new RegExp(category.replace("-", "[- ]"), "i").test(text));
+  const stage = /(?:moderation[_ ]stage|stage)\s*[:=]?\s*input/i.test(text)
+    ? "input"
+    : /(?:moderation[_ ]stage|stage)\s*[:=]?\s*output/i.test(text) ? "output" : "unknown";
+  return { stage, categories };
+}
+
+function errorResponse(error, fallback) {
+  const body = { error: error?.message || fallback };
+  if (error?.code) body.code = error.code;
+  if (error?.type) body.type = error.type;
+  if (error?.moderationDetails) body.moderation_details = error.moderationDetails;
+  if (error?.requestId) body.request_id = error.requestId;
+  if (typeof error?.retryable === "boolean") body.retryable = error.retryable;
+  return body;
 }
 
 function newJobDir(kind) {
@@ -123,13 +192,26 @@ function codexAuthStatus() {
   });
 }
 
-const evaluatorPrompt = `You are a strict visual QC evaluator for fashion garment transfer. IMAGE 1 is MODEL_REFERENCE. Remaining images are PRODUCT_REFERENCE views. Product fidelity is the highest priority. Return JSON only.
-Evaluate input quality independently, then compatibility only if model score >=82, product score >=85 and neither has hard_fail.
-MODEL components/max: body_visibility 25, sharpness 15, resolution 10, pose_readability 15, occlusion 15, lighting 10, perspective 5, subject_cleanliness 5.
-PRODUCT components/max: product_completeness 25, silhouette_readability 20, construction_detail 15, sharpness 10, color_reliability 10, fabric_texture 10, viewpoint_usefulness 5, occlusion 5.
-COMPATIBILITY components/max: pose_body_geometry 25, garment_geometry 25, length_coverage 20, viewpoint 15, occlusion 10, camera_perspective 5.
-Hard fail model for missing critical body region, cropped lower garment/heel/floor for floor-length, severe occlusion, unreadable geometry, unusable quality or ambiguous subject. Hard fail product for missing critical garment region, unreadable silhouette/length/design, severe occlusion or insufficient identity detail. Cap compatibility at 69 for critical missing geometry, insufficient viewpoint, critical occlusion or substantial invention.
-Return keys: input_quality.model (all components, hard_fail, hard_fail_reasons), input_quality.product (all components, hard_fail, hard_fail_reasons), compatibility (all components, score_cap_applied, score_cap_reason), risks array of {factor,severity,reason}, recommended_reference_requirements array, product_spec object with category,color,silhouette,neckline,shoulder_structure,bodice,waist,skirt,length,fabric,must_preserve array, model_spec object with pose,body_visibility,camera,composition,lighting,background. Do not provide totals; backend computes them.`;
+// Thresholds live in normalizeEvaluation, never here: a judge that knows the pass
+// mark scores towards it. Ranges live in the schema instead of a second component
+// list, so the two can never drift apart. model_spec is gone — nothing read it.
+const evaluatorPrompt = `# Role
+Strict visual QC evaluator for fashion garment transfer. Product fidelity outranks model quality.
+
+# Input
+Image 1 is the model. All other images are views of one garment.
+
+# Rules
+- Score every field. No totals, levels or decisions — the backend computes them.
+- Bands per field, as % of max: 90+ unambiguous · 75-89 one small inference · 55-74 needs guesswork · 30-54 mostly unreadable · under 30 absent or misleading.
+- hard_fail: a critical body or garment region is missing, a floor-length hem is cut off, geometry or design is unreadable, or occlusion is severe.
+- score_cap_applied: a faithful transfer would need substantial invention.
+- product_spec feeds the image prompt directly. Each value is a short, neutral, retail-catalog English phrase, never JSON. Omit what you cannot read; never write "unknown".
+- Vietnamese for score_cap_reason, risks[].reason and recommended_reference_requirements. English everywhere else.
+
+# Output
+Raw JSON only, integers within the ranges shown:
+{"input_quality":{"model":{"body_visibility":<0-25>,"sharpness":<0-15>,"resolution":<0-10>,"pose_readability":<0-15>,"occlusion":<0-15>,"lighting":<0-10>,"perspective":<0-5>,"subject_cleanliness":<0-5>,"hard_fail":<bool>},"product":{"product_completeness":<0-25>,"silhouette_readability":<0-20>,"construction_detail":<0-15>,"sharpness":<0-10>,"color_reliability":<0-10>,"fabric_texture":<0-10>,"viewpoint_usefulness":<0-5>,"occlusion":<0-5>,"hard_fail":<bool>}},"compatibility":{"pose_body_geometry":<0-25>,"garment_geometry":<0-25>,"length_coverage":<0-20>,"viewpoint":<0-15>,"occlusion":<0-10>,"camera_perspective":<0-5>,"score_cap_applied":<bool>,"score_cap_reason":""},"risks":[{"factor":"","reason":""}],"recommended_reference_requirements":[],"product_spec":{"category":"","color":"","silhouette":"","neckline":"","shoulder_structure":"","bodice":"","waist":"","skirt":"","length":"","fabric":"","must_preserve":[]}}`;
 
 function clampScore(value, max) { const n = Number(value); return Number.isFinite(n) ? Math.max(0, Math.min(max, n)) : 0; }
 function sumFields(obj, spec) { return Object.entries(spec).reduce((sum, [key, max]) => sum + clampScore(obj?.[key], max), 0); }
@@ -176,23 +258,25 @@ async function visionJsonViaCodex(prompt, images, labels = []) {
     }));
     const manifest = files.map((item, index) => `${index + 1}. ${path.basename(item.file)} = ${item.label}`).join("\n");
     const instruction = [
-      "You are running a strict image evaluation task. Do not write, run or generate any code, and do not generate any images.",
+      "Evaluate images. Do not write or run code, and do not generate images.",
       "",
-      "Step 1 — Inspect every image below with the view_image tool, in this exact order:",
+      "1. Inspect every image with view_image, in this order:",
       manifest,
       "",
-      "Step 2 — Apply the following evaluator specification to those images:",
-      "<<<EVALUATOR_SPEC",
+      "2. Apply this specification:",
+      "<evaluator_spec>",
       prompt,
-      "EVALUATOR_SPEC",
+      "</evaluator_spec>",
       "",
-      "Step 3 — Write your answer as a single raw JSON object to the file `result.json` in the current working directory.",
-      "The file must contain only the JSON object: no markdown fences, no commentary, no leading or trailing text.",
-      "Do not print the JSON in your reply; the file is the deliverable."
+      "3. Write the JSON object to `result.json` here: no fences, no commentary. Re-read it to confirm it parses. If an image will not open, still write the file and score it 0.",
+      "The file is the deliverable, not your reply."
     ].join("\n");
-    await codexExec(instruction, dir, Number(process.env.STUDIO_EVAL_TIMEOUT_MS || 360000));
+    const log = await codexExec(instruction, dir, Number(process.env.STUDIO_EVAL_TIMEOUT_MS || 360000), evalModel, evalEffort);
     const resultFile = path.join(dir, "result.json");
-    if (!fs.existsSync(resultFile)) throw Object.assign(new Error("Codex không tạo result.json."), { status: 502 });
+    if (!fs.existsSync(resultFile)) {
+      const why = lastWords(log);
+      throw Object.assign(new Error(`Codex không tạo result.json.${why ? ` Agent nói: ${why}` : ""}`), { status: 502 });
+    }
     const text = fs.readFileSync(resultFile, "utf8").trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
     try { return JSON.parse(text); }
     catch { throw new Error("Evaluator trả JSON không hợp lệ."); }
@@ -218,9 +302,43 @@ async function evaluateCandidates(payload) {
   return {model:evaluatorLabel,candidates,recommended_index:candidates.find(x=>x.evaluation.compatibility.decision==="AUTO_RENDER")?.index??null};
 }
 
-function buildRenderPrompt(e) {
-  const p=e.product_spec||{},m=e.model_spec||{},risks=(e.risks||[]).map(x=>`${x.factor}: ${x.reason}`).join("; ");
-  return `Create a photorealistic fashion garment-transfer image. FIRST image is the model/base. Preserve exact person, face, hair, pose, body proportions, camera, framing, background and lighting. Remaining images are authoritative product references. Replace only clothing with the exact product. PRODUCT SPEC: category=${p.category||"unknown"}; color=${p.color||"as reference"}; silhouette=${p.silhouette||"as reference"}; neckline=${p.neckline||"as reference"}; shoulder=${p.shoulder_structure||"as reference"}; bodice=${JSON.stringify(p.bodice||{})}; waist=${JSON.stringify(p.waist||{})}; skirt=${JSON.stringify(p.skirt||{})}; length=${JSON.stringify(p.length||{})}; fabric=${JSON.stringify(p.fabric||{})}; must preserve=${(p.must_preserve||[]).join(", ")}. MODEL SPEC: ${JSON.stringify(m)}. RISKS: ${risks||"none"}. Do not redesign, simplify, embellish, combine garments, invent seams/details, alter neckline, length, volume, color or material. Preserve correct heel/floor relationship and fit naturally.`;
+// Keep evaluator/QC prose bounded and neutral before it reaches image generation.
+// These replacements retain the garment design while avoiding wording that can
+// accidentally frame a standard catalogue edit as intimate content.
+function cleanFashionPhrase(value) {
+  const text = typeof value === "string"
+    ? value.trim().replace(/\.$/, "")
+      .replace(/[<>`{}]/g, " ")
+      .replace(/\b(?:plunging|deep)\s+v(?:-neck)?\b/gi, "v-neck")
+      .replace(/\blow[- ]cut\b/gi, "open neckline")
+      .replace(/\bcleavage\b/gi, "neckline")
+      .replace(/\bnude\b/gi, "beige")
+      .replace(/\b(?:see[- ]through|transparent|sheer)\b/gi, "lightweight")
+      .replace(/\bskin[- ]tight\b/gi, "close-fitting")
+      .replace(/\s+/g, " ").slice(0, 160)
+    : "";
+  return text && !/^(unknown|as reference|none|n\/a)$/i.test(text) ? text : "";
+}
+
+// The image model reads prose, not JSON, and follows positive statements far better
+// than a chain of prohibitions. Unreadable fields are dropped instead of being sent
+// as "unknown", and model_spec is left out entirely: the base photo is the edit
+// target, so describing it again in words can only contradict the pixels.
+function buildRenderPrompt(e = {}) {
+  const p = e.product_spec || {};
+  const garment = [p.category, p.color, p.silhouette, p.neckline, p.shoulder_structure,
+    p.bodice, p.waist, p.skirt, p.length, p.fabric].map(cleanFashionPhrase).filter(Boolean).join(", ");
+  const keep = (p.must_preserve || []).map(cleanFashionPhrase).filter(Boolean).slice(0, 6).join(", ");
+  return [
+    "Create a photorealistic commercial fashion catalogue edit featuring the adult model in the FIRST image wearing the referenced product exactly as sold.",
+    "Preserve the model's identity, face, hair, pose, hands, camera, framing, background and lighting.",
+    "Use the FIRST image only as the edit canvas. Use every remaining image only to read the garment; ignore the identity, pose and styling of any people shown in those references.",
+    "Reproduce the referenced garment faithfully, including its fit, fabric drape, panels, trim, colour, length and construction.",
+    garment ? `The garment: ${garment}.` : "",
+    keep ? `Keep visible: ${keep}.` : "",
+    "Take construction details only from the references; where they show nothing, choose the plainest retail-catalog reading. Keep correct hem, heel and floor contact.",
+    "Use a neutral, non-suggestive, product-focused presentation suitable for an online retail catalogue."
+  ].filter(Boolean).join(" ");
 }
 
 const send = (res, status, body, type = "application/json; charset=utf-8") => {
@@ -232,6 +350,45 @@ const send = (res, status, body, type = "application/json; charset=utf-8") => {
   }
 };
 
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0, chunks = [], tooLarge = false, settled = false;
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    req.on("data", chunk => {
+      size += chunk.length;
+      if (size > maxBody) {
+        tooLarge = true;
+        chunks = [];
+      } else if (!tooLarge) chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (settled) return;
+      if (tooLarge) return fail(Object.assign(new Error("Tổng dung lượng ảnh vượt quá giới hạn 45 MB."), {
+        status: 413,
+        code: "payload_too_large",
+        retryable: false
+      }));
+      try {
+        const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        settled = true;
+        resolve(payload);
+      } catch {
+        fail(Object.assign(new Error("Dữ liệu JSON không hợp lệ."), { status: 400, code: "invalid_json", retryable: false }));
+      }
+    });
+    req.on("error", fail);
+    req.on("aborted", () => fail(Object.assign(new Error("Kết nối tải ảnh đã bị ngắt."), {
+      status: 400,
+      code: "request_aborted",
+      retryable: true
+    })));
+  });
+}
+
 function dataUrlToBlob(dataUrl) {
   const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl || "");
   if (!match) throw new Error("Ảnh đầu vào không hợp lệ.");
@@ -242,7 +399,8 @@ function assertRenderPayload(payload) {
   if (!payload.modelImage || !Array.isArray(payload.productImages) || !payload.productImages.length) {
     throw Object.assign(new Error("Cần ít nhất một ảnh người mẫu và một ảnh sản phẩm."), { status: 400 });
   }
-  if (!payload.evaluation || (payload.evaluation.compatibility?.decision !== "AUTO_RENDER" && !(allowManualOverride && payload.manualOverride === true))) {
+  const skipEvaluation = payload.skipEvaluation === true;
+  if (!skipEvaluation && (!payload.evaluation || (payload.evaluation.compatibility?.decision !== "AUTO_RENDER" && !(allowManualOverride && payload.manualOverride === true)))) {
     throw Object.assign(new Error("Input chưa vượt Input Gate và Compatibility Gate."), { status: 422 });
   }
 }
@@ -257,19 +415,39 @@ function saveGenerated(payload, buffer) {
   return { filename, savedPath };
 }
 
+function generatedFile(filename) {
+  const name = String(filename || "");
+  if (!name || path.basename(name) !== name || !/\.png$/i.test(name)) {
+    throw Object.assign(new Error("Tên ảnh đã tạo không hợp lệ."), { status: 400 });
+  }
+  const file = path.join(root, "generated", name);
+  if (!fs.existsSync(file)) throw Object.assign(new Error("Không tìm thấy ảnh đã tạo."), { status: 404 });
+  return file;
+}
+
+const generatedUrl = filename => `/generated/${encodeURIComponent(filename)}`;
+
+// A retry is a correction, not a fresh take: naming what already matched stops the
+// next attempt from fixing the hem and breaking the neckline. The render prompt is
+// always server-built so clients cannot bypass the catalogue safety framing.
 function composeRenderPrompt(payload) {
-  const basePrompt = payload.prompt || buildRenderPrompt(payload.evaluation) || [
-    "Create a photorealistic fashion studio image.",
-    "The FIRST image is the model/base image. Preserve the exact same person, face, identity, body proportions, pose, camera, crop, lighting and background.",
-    "The remaining images are product references. Replace only the model's current garment with the exact referenced product.",
-    "Preserve product color, material, silhouette, neckline, sleeves, waist construction, hem length, seams, pattern, logos and hardware as faithfully as visible in the references.",
-    "Keep hands, hair and accessories natural. Do not add text, change the face, reshape the body, or invent product details not supported by references."
-  ].join(" ");
-  const rerenderReasons = Array.isArray(payload.rerenderReasons) ? payload.rerenderReasons.filter(Boolean).slice(0, 8) : [];
-  const rerenderGuidance = Number(payload.attempt) > 1
-    ? ` This is alternative attempt ${Number(payload.attempt)}. Produce a genuinely new variation while preserving the same person and authoritative product references. Correct these issues from the previous attempt: ${rerenderReasons.join("; ") || "improve product fidelity, garment construction, fit and realism"}.`
-    : "";
-  return `${basePrompt}${rerenderGuidance}`;
+  const basePrompt = buildRenderPrompt(payload.evaluation || {});
+  if (Number(payload.attempt) <= 1) return basePrompt;
+
+  const list = key => (Array.isArray(payload[key])
+    ? payload[key].map(cleanFashionPhrase).filter(Boolean).slice(0, 4)
+    : []);
+  const keep = list("rerenderKeep");
+  const fixes = list("rerenderReasons");
+  const guidance = [
+    ` Revision ${Number(payload.attempt)}.`,
+    keep.length ? ` Already correct, keep unchanged: ${keep.join(", ")}.` : "",
+    fixes.length
+      ? ` Change only this: ${fixes.join("; ")}.`
+      : " Bring the garment closer to the references.",
+    " Leave the rest as it was."
+  ].filter(Boolean).join("");
+  return `${basePrompt}${guidance}`;
 }
 
 async function renderImageViaApi(payload) {
@@ -296,13 +474,27 @@ async function renderImageViaApi(payload) {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = result?.error?.message || `OpenAI API trả lỗi ${response.status}.`;
-    throw Object.assign(new Error(message), { status: response.status });
+    const problem = result?.error || {};
+    const requestId = response.headers.get("x-request-id") || problem.request_id || null;
+    if (problem.code === "moderation_blocked") {
+      throw moderationError({
+        stage: problem.moderation_details?.moderation_stage,
+        categories: problem.moderation_details?.categories,
+        requestId
+      });
+    }
+    throw Object.assign(new Error(problem.message || `OpenAI API trả lỗi ${response.status}.`), {
+      status: response.status,
+      code: problem.code || problem.type || null,
+      type: problem.type || null,
+      requestId,
+      retryable: response.status === 429 || response.status >= 500
+    });
   }
   const b64 = result?.data?.[0]?.b64_json;
   if (!b64) throw new Error("API không trả về dữ liệu ảnh.");
   const { filename, savedPath } = saveGenerated(payload, Buffer.from(b64, "base64"));
-  return { image: `data:image/png;base64,${b64}`, usage: result.usage || null, model: "gpt-image-2", filename, savedPath, backend: "api" };
+  return { imageUrl: generatedUrl(filename), usage: result.usage || null, model: "gpt-image-2", filename, savedPath, backend: "api" };
 }
 
 // Ghép đồ qua codex exec: chạy trong hạn mức gói ChatGPT, không tốn API credit.
@@ -314,28 +506,44 @@ async function renderImageViaCodex(payload) {
     const size = payload.size || "1024x1536";
     const quality = payload.quality || "medium";
     const instruction = [
-      "You are performing a fashion garment-transfer image edit. Use the built-in image_gen tool. Do not write or run any Python, Node or shell image code, and do not use the CLI fallback.",
+      "Edit a fashion photograph with the built-in image_gen tool. Do not write or run image code, and do not use the CLI fallback.",
       "",
-      "Step 1 — Load every input image into context with the view_image tool, in this order:",
-      `1. ${path.basename(modelFile)} = MODEL_REFERENCE (the base image to preserve)`,
-      ...productFiles.map((file, index) => `${index + 2}. ${path.basename(file)} = PRODUCT_REFERENCE VIEW ${index + 1} (authoritative garment source)`),
+      "1. Load every image with view_image, in this order:",
+      `1. ${path.basename(modelFile)} = model, the base image to preserve`,
+      ...productFiles.map((file, index) => `${index + 2}. ${path.basename(file)} = garment view ${index + 1}`),
       "",
-      "Step 2 — Run one built-in image_gen edit using the model image as the edit target and the product images as authoritative references. Apply this specification exactly:",
-      "<<<RENDER_SPEC",
+      "2. Run exactly one image_gen edit: the model image is the target, the garment images are references. Apply this specification:",
+      "<render_spec>",
       composeRenderPrompt(payload),
-      "RENDER_SPEC",
+      "</render_spec>",
+      `Target roughly ${size}, portrait, ${quality} quality, PNG.`,
       "",
-      `Target output: approximately ${size} pixels, portrait orientation preserved, ${quality} quality, PNG.`,
-      "",
-      "Step 3 — Copy the generated PNG to the file `output.png` in the current working directory.",
-      "Produce exactly one image. Do not create variants, do not ask questions, and do not stop before output.png exists."
+      "3. Save the result as `output.png` here. One image, no variants, no questions.",
+      "If image_gen is blocked or refuses, do not retry the same request. Write `failure.json` with raw JSON shaped as {\"code\":\"moderation_blocked\",\"moderation_stage\":\"input|output|unknown\",\"categories\":[]} using details returned by the tool when available, then stop."
     ].join("\n");
-    await codexExec(instruction, dir, Number(process.env.STUDIO_RENDER_TIMEOUT_MS || 600000));
+    const log = await codexExec(instruction, dir, Number(process.env.STUDIO_RENDER_TIMEOUT_MS || 600000), renderModel, renderEffort);
     const outputFile = path.join(dir, "output.png");
-    if (!fs.existsSync(outputFile)) throw Object.assign(new Error("Codex không tạo output.png. Thử lại hoặc đổi STUDIO_BACKEND=api."), { status: 502 });
+    if (!fs.existsSync(outputFile)) {
+      const failureFile = path.join(dir, "failure.json");
+      if (fs.existsSync(failureFile)) {
+        try {
+          const failure = JSON.parse(fs.readFileSync(failureFile, "utf8"));
+          if (failure?.code === "moderation_blocked") {
+            throw moderationError({ stage: failure.moderation_stage, categories: failure.categories });
+          }
+        } catch (error) {
+          if (error?.code === "moderation_blocked") throw error;
+          // A malformed failure marker falls through to log classification.
+        }
+      }
+      const blocked = moderationFromLog(log);
+      if (blocked) throw moderationError(blocked);
+      const why = lastWords(log);
+      throw Object.assign(new Error(`Codex không tạo output.png (model ${renderModel}).${why ? ` Agent nói: ${why}` : ""}`), { status: 502 });
+    }
     const buffer = fs.readFileSync(outputFile);
     const { filename, savedPath } = saveGenerated(payload, buffer);
-    return { image: `data:image/png;base64,${buffer.toString("base64")}`, usage: null, model: "gpt-image-2 (gói ChatGPT qua Codex)", filename, savedPath, backend: "codex" };
+    return { imageUrl: generatedUrl(filename), usage: null, model: "gpt-image-2 (gói ChatGPT qua Codex)", filename, savedPath, backend: "codex" };
   } finally {
     cleanupJob(dir);
   }
@@ -348,10 +556,30 @@ async function renderImage(payload) {
 
 async function qcOutput(payload){
   const productReferences=(Array.isArray(payload.productImages)?payload.productImages:[payload.productImage]).filter(Boolean).slice(0,8);
-  if(!payload.modelImage||!productReferences.length||!payload.generatedImage) throw Object.assign(new Error("Thiếu ảnh để chạy output QC."),{status:400});
-  const images=[payload.modelImage,...productReferences,payload.generatedImage];
+  const generatedImage=payload.generatedImage||(payload.generatedFilename
+    ? `data:image/png;base64,${fs.readFileSync(generatedFile(payload.generatedFilename)).toString("base64")}`
+    : "");
+  if(!payload.modelImage||!productReferences.length||!generatedImage) throw Object.assign(new Error("Thiếu ảnh để chạy output QC."),{status:400});
+  const images=[payload.modelImage,...productReferences,generatedImage];
   const labels=["ORIGINAL MODEL REFERENCE",...productReferences.map((_,index)=>`PRODUCT REFERENCE VIEW ${index+1}`),"FINAL GENERATED OUTPUT TO JUDGE"];
-  const prompt=`You are a strict post-render fashion product fidelity judge. The labeled images contain one ORIGINAL MODEL REFERENCE, one or more PRODUCT REFERENCE VIEW images, and exactly one FINAL GENERATED OUTPUT TO JUDGE. Judge only the final generated output against all references. Return JSON only with numeric fields: silhouette 0-25, construction_detail 0-25, length_proportion 0-15, color_material 0-15, model_pose_preservation 0-10, scene_camera_preservation 0-10; critical_failure boolean; critical_failure_reasons array; rerender_reasons array. Product fidelity is primary. Critical failures include wrong neckline/bodice, silhouette, length, invented/missing distinctive detail, or major color/material deviation.`;
+  const prompt=`# Role
+Strict fidelity judge for fashion garment transfer.
+
+# Input
+Labelled: one model reference, one or more garment reference views, and exactly one generated output.
+
+# Rules
+- Judge only the generated output, against the references. Product fidelity is primary.
+- Score every field. No total, no pass/fail — the backend computes them.
+- Bands per field, as % of max: 90+ indistinguishable · 75-89 a buyer accepts it · 55-74 visibly off, same garment · 30-54 different garment, same family · under 30 unrelated.
+- critical_failure: wrong neckline, bodice, silhouette or length; a distinctive detail invented or lost; major colour or material deviation.
+- strengths: up to 4 garment features already correct. They are fed to the next attempt to protect them.
+- rerender_reasons: up to 4 corrections, each written as the change to make — "shorten the hem to mid-calf", not "the hem is too long".
+- rerender_notes_vi: the same points in Vietnamese. English everywhere else.
+
+# Output
+Raw JSON only, integers within the ranges shown:
+{"silhouette":<0-25>,"construction_detail":<0-25>,"length_proportion":<0-15>,"color_material":<0-15>,"model_pose_preservation":<0-10>,"scene_camera_preservation":<0-10>,"critical_failure":<bool>,"strengths":[],"rerender_reasons":[],"rerender_notes_vi":[]}`;
   const raw=await visionJson(prompt,images,labels);
   const score=sumFields(raw,{silhouette:25,construction_detail:25,length_proportion:15,color_material:15,model_pose_preservation:10,scene_camera_preservation:10});
   return {...raw,product_fidelity_score:score,...fiveLevel(score),decision:score>=88&&!raw.critical_failure?'PASS':'RERENDER',model:evaluatorLabel};
@@ -376,30 +604,37 @@ async function checkOpenAIKey() {
 }
 
 const server = http.createServer(async (req, res) => {
+  if (req.method === "GET" && req.url?.startsWith("/generated/")) {
+    try {
+      const pathname = new URL(req.url, `http://127.0.0.1:${port}`).pathname;
+      const filename = decodeURIComponent(pathname.slice("/generated/".length));
+      return send(res, 200, fs.readFileSync(generatedFile(filename)), "image/png");
+    } catch (error) {
+      return send(res, error.status || 404, errorResponse(error, "Không tìm thấy ảnh."));
+    }
+  }
   if (req.method === "GET" && req.url === "/api/status") {
     const ready = backend === "codex" ? Boolean(findCodex()) : Boolean(apiKey);
-    return send(res, 200, { ready, backend, model: "gpt-image-2", evaluator: backend === "codex" ? "gói ChatGPT qua Codex" : visionModel, allowManualOverride, serverId });
+    return send(res, 200, { ready, backend, model: "gpt-image-2", evaluator: backend === "codex" ? "gói ChatGPT qua Codex" : visionModel,
+      evaluatorModel: backend === "codex" ? evalModel : visionModel, evaluatorEffort: backend === "codex" ? evalEffort : null,
+      allowManualOverride, serverId });
   }
   if (req.method === "GET" && req.url === "/api/openai-check") {
     try { return send(res, 200, await checkOpenAIKey()); }
-    catch (error) { return send(res, error.status || 500, { error: error.message || "Không thể xác thực API key." }); }
+    catch (error) { return send(res, error.status || 500, errorResponse(error, "Không thể xác thực API key.")); }
   }
   if (req.method === "POST" && req.url === "/api/render") {
-    let size = 0, chunks = [];
-    req.on("data", chunk => {
-      size += chunk.length;
-      if (size > maxBody) req.destroy(); else chunks.push(chunk);
-    });
-    req.on("end", async () => {
-      try { send(res, 200, await renderImage(JSON.parse(Buffer.concat(chunks).toString("utf8")))); }
-      catch (error) { send(res, error.status || 500, { error: error.message || "Không thể tạo ảnh." }); }
-    });
+    try { send(res, 200, await renderImage(await readJsonBody(req))); }
+    catch (error) { send(res, error.status || 500, errorResponse(error, "Không thể tạo ảnh.")); }
     return;
   }
   if (req.method === "POST" && (req.url === "/api/evaluate" || req.url === "/api/qc")) {
-    let size=0,chunks=[];
-    req.on("data",chunk=>{size+=chunk.length;if(size>maxBody)req.destroy();else chunks.push(chunk)});
-    req.on("end",async()=>{try{const payload=JSON.parse(Buffer.concat(chunks).toString("utf8"));send(res,200,req.url==="/api/evaluate"?await evaluateCandidates(payload):await qcOutput(payload))}catch(error){send(res,error.status||500,{error:error.message||"Evaluation failed"})}});
+    try {
+      const payload=await readJsonBody(req);
+      send(res,200,req.url==="/api/evaluate"?await evaluateCandidates(payload):await qcOutput(payload));
+    } catch(error) {
+      send(res,error.status||500,errorResponse(error,"Evaluation failed"));
+    }
     return;
   }
   if (req.method === "GET" && (req.url === "/" || req.url === "/studio-flow-ui.html")) {
@@ -408,12 +643,16 @@ const server = http.createServer(async (req, res) => {
   send(res, 404, { error: "Not found" });
 });
 
-server.listen(port, "127.0.0.1", async () => {
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) server.listen(port, "127.0.0.1", async () => {
   console.log(`Studio Flow: http://127.0.0.1:${port}`);
   console.log(`Backend: ${backend === "codex" ? "CODEX (gói ChatGPT — không tốn API credit)" : "API (OPENAI_API_KEY — tính phí)"}`);
   if (backend === "codex") {
     const bin = findCodex();
     console.log(bin ? `Codex CLI: ${bin}` : "Codex CLI: KHÔNG TÌM THẤY — đặt CODEX_CLI_PATH hoặc cài ChatGPT/Codex");
+    console.log(`Model chấm : ${evalModel} (suy luận ${evalEffort})`);
+    console.log(`Model vẽ   : ${renderModel} (suy luận ${renderEffort})`);
     if (bin) {
       const status = await codexAuthStatus();
       console.log(status.ok ? `Đăng nhập: ${status.detail || "OK"}` : `Đăng nhập: CHƯA — ${status.reason}`);
@@ -423,3 +662,5 @@ server.listen(port, "127.0.0.1", async () => {
     console.log(apiKey ? "GPT Image 2: READY" : "GPT Image 2: CHƯA CÓ OPENAI_API_KEY");
   }
 });
+
+export { buildRenderPrompt, composeRenderPrompt, moderationFromLog, errorResponse, assertRenderPayload, normalizeEvaluation };

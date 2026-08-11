@@ -8,317 +8,159 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Playfair Display, not Instrument Serif: the latter ships no Vietnamese subset,
      so ầ/ề/ố split into base letter + floating accent. Same editorial voice, full diacritics. -->
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400&family=Geist:wght@400;500&family=Geist+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
-/* ==========================================================================
-   Studio Flow — editorial production tool.
-   Serif for voice, grotesque for work, mono for numbers. No cards, no chrome:
-   the garment photography is the only thing allowed to carry weight.
-   ========================================================================== */
+/* Claude handoff translated into the production DOM. The app deliberately uses
+   lines, type and spacing instead of cards, shadows or decorative chrome. */
 :root{
-  --ink:#1a1a1c;
-  --ink-2:#5c5c57;
-  --ink-3:#6f6f69;
-  --ink-4:#84847e;
-  --ink-5:#8f8f88;
-  --ink-6:#a9a9a2;
-  --ink-7:#b0afa8;
-  --ink-8:#c2c1ba;
-  --line:#ececea;
-  --line-2:#eeedea;
-  --wash:#f4f4f1;
-  --wash-2:#fafaf9;
-  --sage:#7d9482;
-  --sage-ink:#6f7a6e;
-  --clay:#9c6b52;
-  --swatch:repeating-linear-gradient(45deg,#f1f0ed 0 7px,#f9f9f7 7px 14px);
-  --serif:"Playfair Display",ui-serif,Georgia,"Times New Roman",serif;
-  --sans:"Geist","Segoe UI Variable Text","Helvetica Neue",Helvetica,ui-sans-serif,system-ui,sans-serif;
-  --mono:"Geist Mono","Cascadia Mono",ui-monospace,Consolas,monospace;
-  --gap:clamp(16px,2.6vw,44px);
-  --pad-x:clamp(14px,2.4vw,44px);
-  --max:1360px;
+  --ink:#111112;--text-2:#8a8a85;--mono-2:#a8a7a2;--faint:#c9c8c3;
+  --line:#e8e7e4;--image:#f6f5f3;--empty:#fafaf9;--empty-hover:#f4f4f1;
+  --success:#7d9482;--warning:#9c6b52;--paper:#fff;
+  --serif:"Playfair Display",Georgia,"Times New Roman",serif;
+  --sans:"Geist","Segoe UI Variable Text","Helvetica Neue",Arial,sans-serif;
+  --mono:"Geist Mono","Cascadia Mono",Consolas,monospace;
 }
-*{box-sizing:border-box}
-html,body{margin:0;height:100%;overflow:hidden;background:#fff}
-body{font-family:var(--sans);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:13px}
-h1,h2,p,figure{margin:0}
-button,input{font:inherit;color:inherit}
-img{display:block;max-width:100%}
+*{box-sizing:border-box;scrollbar-width:none;-ms-overflow-style:none}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--paper)}
+body{font-family:var(--sans);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased}
+h1,h2,p,figure{margin:0} button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer} input{font:inherit;color:inherit} img{display:block;max-width:100%}
 [hidden]{display:none!important}
 .vh{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-:focus-visible{outline:1.5px solid var(--ink);outline-offset:2px}
-h1:focus,h1:focus-visible,.pane:focus{outline:none}
-::-webkit-scrollbar{width:10px;height:10px}
-::-webkit-scrollbar-thumb{background:var(--line);border-radius:10px;border:3px solid #fff}
-
-.shell{height:100vh;display:flex;flex-direction:column;align-items:center;padding:0 var(--pad-x);overflow:hidden}
-.row{width:100%;max-width:var(--max)}
-
-/* ------------------------------- header --------------------------------- */
-.top{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:clamp(10px,1.6vh,20px) 0 clamp(8px,1vh,12px)}
-.wordmark{font-family:var(--serif);font-size:20px;letter-spacing:-.01em}
-.top-right{display:flex;align-items:center;gap:16px}
-.keyhint{font-family:var(--mono);font-size:11.5px;color:var(--ink-7)}
-.conn{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-5);white-space:nowrap}
-.conn .dot{width:6px;height:6px;border-radius:50%;background:var(--ink-8)}
-.conn.is-ok .dot{background:var(--sage)}
-.conn.is-error .dot{background:var(--clay)}
-.conn.is-error{color:var(--clay)}
-
-/* -------------------------------- steps --------------------------------- */
-.steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:clamp(8px,1.2vw,18px);padding-bottom:clamp(10px,1.4vh,18px)}
-.step{display:flex;flex-direction:column;gap:8px;align-items:flex-start;border:0;background:none;padding:0;cursor:pointer;text-align:left;min-width:0;font-family:inherit}
-.step:disabled{cursor:not-allowed}
-.step .bar{width:100%;height:2px;background:var(--line);transition:background .18s}
-.step.is-past .bar,.step.is-now .bar{background:var(--ink)}
-.step .lab{display:flex;align-items:baseline;gap:7px;min-width:0}
-.step .n{font-family:var(--mono);font-size:11.5px;color:var(--ink-8)}
-.step .t{font-size:13px;font-weight:500;color:var(--ink-6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.step.is-now .n{color:var(--ink-5)}
-.step.is-now .t{color:var(--ink)}
-.step.is-past .t{color:var(--ink-2)}
-.step:not(:disabled):hover .t{color:var(--ink)}
-.step .flag{font-family:var(--mono);font-size:11.5px;color:var(--clay)}
-
-/* -------------------------------- stage --------------------------------- */
-.main{flex:1;min-height:0;display:flex;flex-direction:column;gap:clamp(10px,1.4vh,18px)}
-.title-row{display:flex;align-items:flex-end;justify-content:space-between;gap:28px}
-.title-box{display:flex;flex-direction:column;gap:4px;min-width:0}
-h1{font-family:var(--serif);font-size:clamp(24px,2.6vw,38px);font-weight:400;letter-spacing:-.02em;line-height:1.05}
-.lede{font-size:14px;color:var(--ink-4);line-height:1.45;max-width:64ch;text-wrap:pretty}
-.count{display:flex;align-items:baseline;gap:8px;white-space:nowrap}
-.count b{font-family:var(--serif);font-size:26px;font-weight:400}
-.count span{font-size:12.5px;color:var(--ink-6)}
-.screen{flex:1;min-height:0;display:none}
-.screen.is-on{display:block}
-.notice{font-size:12.5px;color:var(--clay);line-height:1.5;padding-bottom:6px}
-.notice b{color:var(--ink);font-weight:500}
-
-/* ------------------------------ primitives ------------------------------ */
-.link{border:0;background:none;padding:0;font-family:inherit;font-size:12.5px;color:var(--ink-3);
-  text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-.link:hover{color:var(--ink)}
-.link:disabled{color:var(--ink-8);cursor:not-allowed;text-decoration:none}
-.solid{border:0;background:var(--ink);color:#fff;padding:12px 24px;font-family:inherit;font-size:13.5px;font-weight:500;cursor:pointer}
-.solid:hover:not(:disabled){background:#000}
-.solid:disabled{background:var(--line);color:var(--ink-6);cursor:not-allowed}
-.tile{aspect-ratio:4/5;border:1px solid var(--line-2);background:#fff;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:6px;cursor:pointer;font-family:inherit}
-.tile:hover{background:var(--wash-2)}
-.tile .plus{font-family:var(--serif);font-size:26px;color:var(--ink-6);line-height:1}
-.tile .t{font-size:13px}
-.tile .s{font-family:var(--mono);font-size:11.5px;color:var(--ink-7)}
-.swatch{background:var(--swatch);display:grid;place-items:center}
-.swatch span{font-family:var(--mono);font-size:11.5px;color:#9c9b95}
-.mono{font-family:var(--mono);font-size:11.5px;color:var(--ink-7)}
-.eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-7)}
-/* Instrument Serif ships Vietnamese diacritics in Regular but NOT in Italic —
-   italic splits ế into e + ́. Keep the serif voice, drop the slant. */
-.serif-note{font-family:var(--serif);font-style:normal;font-size:16px;color:var(--sage-ink);line-height:1.45}
+:focus-visible{outline:1px solid var(--ink);outline-offset:3px} h1:focus,h1:focus-visible{outline:0}
+::selection{background:var(--ink);color:#fff}::-webkit-scrollbar{width:0;height:0;display:none}
 .scrollY{min-height:0;overflow-y:auto;overflow-x:hidden}
-.spin{width:10px;height:10px;border:1.5px solid var(--line);border-top-color:var(--ink-3);border-radius:50%;
-  display:inline-block;animation:sp .7s linear infinite;vertical-align:-1px}
-@keyframes sp{to{transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
+.shell{height:100vh;display:flex;flex-direction:column;padding:0 40px;overflow:hidden;background:#fff}
+.row{width:100%}
 
-/* ------------------------------- step 01 -------------------------------- */
-/* Larger cells: the garment is the subject, and auto-fill at 178px left half
-   the canvas empty on a studio monitor. */
-.grid-products{display:grid;grid-template-columns:repeat(auto-fill,minmax(248px,1fr));gap:clamp(16px,2vw,30px)}
-.product{display:flex;flex-direction:column;gap:9px;min-width:0}
-.product .shot{position:relative;aspect-ratio:4/5;background:var(--swatch);overflow:hidden}
-.product .shot img{width:100%;height:100%;object-fit:cover}
-.product .meta{display:flex;align-items:baseline;gap:8px;min-width:0}
-.product .meta .code{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.product .acts{display:flex;gap:14px;flex-wrap:wrap}
-.views{display:flex;gap:6px;flex-wrap:wrap}
-.view{position:relative;width:34px;height:43px;background:var(--swatch);overflow:hidden}
-.view img{width:100%;height:100%;object-fit:cover}
-.view button{position:absolute;inset:0;border:0;background:rgba(26,26,28,.62);color:#fff;font-size:11px;
-  cursor:pointer;opacity:0;font-family:inherit}
-.view:hover button,.view:focus-within button{opacity:1}
+/* Header and process rail */
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:20px 0 18px}
+.wordmark{font:400 19px/1 var(--serif);letter-spacing:-.01em}
+.top-right{display:flex;align-items:baseline;gap:24px}
+.top .link,.conn{font:400 11px/1.45 var(--mono);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.conn{color:var(--success)}.conn .dot{display:none}.conn.is-error,.notice{color:var(--warning)}
+.steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;padding-bottom:28px}
+.step-slot{display:flex;flex-direction:column;gap:9px;min-width:0}
+.step-line{display:flex;align-items:baseline;gap:8px;min-width:0}
+.step{display:flex;align-items:baseline;flex:0 1 auto;min-width:0;border:0;background:none;padding:0;cursor:pointer;text-align:left}
+.step:disabled{cursor:not-allowed}
+.step-bar{width:100%;height:1px;background:var(--line)}
+.step-slot.is-past .step-bar,.step-slot.is-now .step-bar{background:var(--ink)}
+.step .lab{display:flex;align-items:baseline;gap:8px;min-width:0}
+.step .n,.step .t,.step .flag,.step-option{font:400 11px/1.45 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.step .n{letter-spacing:0;text-transform:none;color:var(--faint)}
+.step .t{color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step.is-past .t{color:var(--text-2)} .step.is-now .t{color:var(--ink)}
+.step .flag{color:var(--warning)}
+.step-option{flex:0 0 auto;color:#dedcd7;white-space:nowrap}.step-option.is-on{color:var(--ink)}
+.step-slot.is-skip .step .t{color:var(--faint);text-decoration:line-through;text-decoration-thickness:1px}
 
-/* ------------------------------- step 02 -------------------------------- */
-.split2{height:100%;display:grid;grid-template-columns:minmax(0,1fr) clamp(210px,22vw,306px);gap:var(--gap);min-height:0}
-.grid-models{display:grid;grid-template-columns:repeat(auto-fill,minmax(186px,1fr));gap:clamp(14px,1.8vw,24px)}
-.model{display:flex;flex-direction:column;gap:8px;min-width:0}
-.model .shot{position:relative;aspect-ratio:3/4;background:var(--swatch);overflow:hidden}
+/* Stage */
+.main{flex:1;min-height:0;display:flex;flex-direction:column}
+.title-row{min-height:66px;padding-bottom:28px;display:flex;align-items:flex-end;justify-content:space-between;gap:40px}
+.title-box{display:flex;flex-direction:column;gap:6px;min-width:0}
+h1{font:400 34px/1.05 var(--serif);letter-spacing:-.02em}
+.lede{min-height:20px;max-width:62ch;color:var(--text-2);font-size:13px;line-height:1.5;text-wrap:pretty}
+.count{display:flex;align-items:baseline;gap:9px;white-space:nowrap}
+.count b{font:400 26px/1 var(--serif)} .count span{font:400 11px/1.45 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mono-2)}
+.screen{flex:1;min-height:0;display:none}.screen.is-on{display:block}
+.notice{margin-top:-18px;padding-bottom:12px;font-size:13px;line-height:1.5}.notice b{color:var(--ink);font-weight:500}
+
+/* Shared controls */
+.link,.back,.model-remove{font:400 11px/1.45 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mono-2);text-decoration:none}
+.link:hover,.back:hover,.model-remove:hover{color:var(--ink)}.product [data-act="rm-product"]:hover,.model-remove:hover{color:var(--warning)}
+.link:disabled,.model-remove:disabled{color:var(--faint);cursor:not-allowed}
+.solid{min-width:212px;background:var(--ink);color:#fff;padding:13px 26px;font-size:13px;font-weight:500;text-align:center}
+.solid:hover:not(:disabled){background:#000}.solid:disabled{background:var(--line);color:var(--mono-2);cursor:not-allowed}
+.tile{aspect-ratio:4/5;background:var(--empty);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.tile:hover{background:var(--empty-hover)}
+.tile .plus{font:400 28px/1 var(--serif);color:var(--mono-2)} .tile .t{font-size:13px}.tile .s{font:400 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.mono,.eyebrow{font:400 11px/1.45 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mono-2)}
+.serif-note{font:400 19px/1.4 var(--serif);color:var(--success)}
+.spin{display:inline-block;width:10px;height:10px;border:1px solid var(--line);border-top-color:var(--ink);border-radius:50%;vertical-align:-1px;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}} @media(prefers-reduced-motion:reduce){*{animation-duration:2.4s!important;transition:none!important}}
+
+/* Products */
+.grid-products{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:32px 24px}
+.product{display:flex;flex-direction:column;gap:10px;min-width:0}
+.product .shot{position:relative;aspect-ratio:4/5;background:var(--image);overflow:hidden}.product .shot img{width:100%;height:100%;object-fit:cover}
+.product .meta{display:flex;align-items:baseline;gap:10px;min-width:0}.product .meta .mono{letter-spacing:0;text-transform:none;color:var(--faint)}.product .meta .code{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.product .acts{display:flex;gap:16px;flex-wrap:wrap}.views{display:flex;gap:6px;flex-wrap:wrap}
+.view{position:relative;width:34px;height:43px;background:var(--image);overflow:hidden}.view img{width:100%;height:100%;object-fit:cover}
+.view button{position:absolute;inset:0;border:0;background:rgba(17,17,18,.68);color:#fff;font-size:11px;cursor:pointer;opacity:0}.view:hover button,.view:focus-within button{opacity:1}
+
+/* Models */
+.split2{height:100%;display:grid;grid-template-columns:minmax(0,1fr) 252px;gap:48px;min-height:0}
+.grid-models{display:grid;grid-template-columns:repeat(auto-fill,minmax(186px,1fr));gap:24px 18px}
+.model{display:flex;flex-direction:column;gap:9px;min-width:0}.model .shot{aspect-ratio:3/4;background:var(--image);overflow:hidden}
 .model .shot img{width:100%;height:100%;object-fit:cover;cursor:zoom-in}
-.model .shot .rm{position:absolute;top:6px;right:6px;border:0;background:rgba(26,26,28,.66);color:#fff;
-  font-size:11px;width:22px;height:22px;cursor:pointer;opacity:0;font-family:inherit}
-.model .shot:hover .rm,.model .shot:focus-within .rm{opacity:1}
-.aside-col{display:flex;flex-direction:column;gap:16px;min-height:0}
-.aside-col h2{font-family:var(--serif);font-size:19px;font-weight:400;line-height:1.2}
-.tip{display:flex;flex-direction:column;gap:3px}
-.tip b{font-size:13px;font-weight:500}
-.tip span{font-size:12.5px;color:var(--ink-5);line-height:1.5;text-wrap:pretty}
+.model-foot{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.model-remove{color:var(--faint)}
+.grid-models .tile .t{font:400 11px/1.45 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text-2)!important}
+.aside-col{display:flex;flex-direction:column;gap:24px;min-height:0}.aside-col h2{font:400 19px/1.25 var(--serif)}
+.tip{display:flex;flex-direction:column;gap:4px}.tip b{font-size:13px;font-weight:500}.tip span{font-size:13px;color:var(--text-2);line-height:1.5;text-wrap:pretty}
 
-/* ------------------------------- step 03 -------------------------------- */
-.split3{height:100%;display:grid;grid-template-columns:clamp(150px,16vw,226px) minmax(0,1fr);gap:var(--gap);min-height:0}
-.pick-list{display:flex;flex-direction:column;gap:4px;min-height:0}
-.pick{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:10px;align-items:center;border:0;
-  background:none;padding:8px;cursor:pointer;font-family:inherit;text-align:left;width:100%}
-.pick:hover{background:#f7f7f5}
-.pick[aria-current="true"]{background:var(--wash)}
-.pick .th{width:38px;height:48px;background:var(--swatch);object-fit:cover}
-.pick .col{display:flex;flex-direction:column;gap:2px;min-width:0}
-.pick .nm{font-size:12.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pick[aria-current="true"] .nm{color:var(--ink)}
-.pick .gr{font-family:var(--mono);font-size:11.5px;color:var(--ink-6)}
-.pick .sc{font-family:var(--mono);font-size:12.5px;color:var(--ink-5)}
-.detail3{min-height:0;display:flex;flex-direction:column;gap:clamp(10px,1.6vh,18px)}
-/* Keep the three figures as a tight cluster; stretching them across the full
-   column left each number stranded in its own empty field. */
-.scores{display:flex;gap:clamp(28px,4vw,64px);flex-wrap:wrap}
-.scorecell{display:flex;flex-direction:column;gap:4px;min-width:0}
-.scorecell .k{font-size:12.5px;color:var(--ink-5)}
-.scorecell .v{font-family:var(--serif);font-size:clamp(28px,3vw,42px);line-height:1}
-.scorecell .n{font-family:var(--mono);font-size:11.5px;color:var(--sage-ink)}
-.scorecell .n.is-warn{color:var(--clay)}
-.detail3-body{flex:1;min-height:0;display:grid;grid-template-columns:clamp(150px,17vw,236px) minmax(0,1fr);gap:var(--gap);align-content:start}
-/* Model candidates — all scored options, so the pick never has to be AI's. */
-.cand-block{display:flex;flex-direction:column;gap:8px;flex:0 0 auto}
-.cand-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.cand-row{display:flex;align-items:flex-start;gap:12px;overflow-x:auto;padding-bottom:4px}
-.cand{flex:0 0 auto;width:118px;border:0;background:none;padding:6px;cursor:pointer;font-family:inherit;
-  text-align:left;display:flex;flex-direction:column;gap:6px}
-.cand:hover{background:#f7f7f5}
-.cand.is-on{background:var(--wash)}
-.cand .shot{display:block;aspect-ratio:3/4;background:var(--swatch);overflow:hidden}
-.cand .shot img{width:100%;height:100%;object-fit:cover;opacity:.72;transition:opacity .12s}
-.cand.is-on .shot img,.cand:hover .shot img{opacity:1}
-.cand .cl{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
-.cand .nm{font-size:12.5px;color:var(--ink-2)}
-.cand.is-on .nm{color:var(--ink)}
-.cand .sc{font-family:var(--mono);font-size:12.5px;color:var(--ink-5)}
-.cand.is-on .sc{color:var(--ink)}
-/* Two-line box keeps every card the same height when one carries the AI badge. */
-.cand .gr{font-family:var(--mono);font-size:11px;color:var(--ink-6);line-height:1.3;min-height:2.6em}
-.cand .gr b{font-weight:400;color:var(--ink-3)}
-.chosen{display:flex;flex-direction:column;gap:8px;min-width:0}
-.chosen .shot{aspect-ratio:3/4;background:var(--swatch);overflow:hidden}
-.chosen .shot img{width:100%;height:100%;object-fit:cover}
-.chosen .line{display:flex;justify-content:space-between;font-size:12.5px}
-.chosen .line b{font-family:var(--mono);font-weight:400;color:var(--ink-5)}
-.notes{min-height:0;display:flex;flex-direction:column;gap:10px}
-.notes p{font-size:13px;color:var(--ink-2);line-height:1.6;max-width:78ch;text-wrap:pretty}
+/* Evaluation */
+.split3{height:100%;display:grid;grid-template-columns:226px minmax(0,1fr);gap:48px;min-height:0}
+.pick-list,.queue{display:flex;flex-direction:column;gap:2px;min-height:0}
+.pick{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:12px;align-items:center;width:100%;padding:8px 0;text-align:left;opacity:.45}
+.qitem{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;align-items:center;width:100%;padding:8px 0;text-align:left;opacity:.45}
+.pick:hover,.qitem:hover,.pick[aria-current="true"],.qitem[aria-current="true"]{opacity:1}
+.pick .th,.qitem .th{width:34px;height:43px;background:var(--image);object-fit:cover}
+.pick .col,.qitem .col{display:flex;flex-direction:column;gap:3px;min-width:0}
+.pick .nm,.qitem .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pick .gr,.qitem .st{font:400 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mono-2)}.pick .sc{font:400 12px var(--mono);color:var(--text-2)}
+.qitem .st.run{color:var(--ink)}.qitem .st.fail{color:var(--warning)}.qitem .st.ok{color:var(--success)}
+.detail3{min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;gap:28px;padding-right:4px}
+.scores{flex:0 0 auto;display:flex;gap:64px;flex-wrap:wrap}.scorecell{display:flex;flex-direction:column;gap:6px}
+.scorecell .k{font:400 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mono-2)}.scorecell .v{font:400 40px/1 var(--serif)}
+.scorecell .v small,.qc-score .v small{font:400 11px var(--mono);color:var(--faint);margin-left:4px}
+.scorecell .n{font:400 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--success)}.scorecell .n.is-warn{color:var(--warning)}
+.cand-block{flex:0 0 auto;display:flex;flex-direction:column;gap:12px}.cand-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.cand-row{display:flex;align-items:flex-start;gap:14px;overflow-x:auto;padding-bottom:4px}
+.cand{flex:0 0 112px;width:112px;text-align:left;display:flex;flex-direction:column;gap:8px;opacity:.45}
+.cand:hover,.cand.is-on{opacity:1}.cand .shot{display:block;aspect-ratio:3/4;background:var(--image);overflow:hidden}.cand .shot img{width:100%;height:100%;object-fit:cover}
+.cand .cl{display:flex;align-items:baseline;justify-content:space-between;gap:6px}.cand .nm{font:400 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text-2)}.cand .sc{font:400 12px var(--mono);color:var(--ink)}.cand .gr{font:400 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint);min-height:2.8em}.cand .gr b{font-weight:400;color:inherit}
+.notes{flex:0 0 auto;min-height:0;display:flex;flex-direction:column;gap:12px}.notes p{max-width:76ch;color:var(--text-2);line-height:1.6;text-wrap:pretty}.notes .link{margin-top:4px}
 
-/* ------------------------------- step 04 -------------------------------- */
-.split4{height:100%;display:grid;grid-template-columns:clamp(150px,16vw,226px) minmax(0,1fr) clamp(186px,20vw,268px);
-  gap:clamp(16px,2.4vw,40px);min-height:0}
-.queue{display:flex;flex-direction:column;gap:4px;min-height:0}
-.qitem{display:grid;grid-template-columns:38px minmax(0,1fr);gap:10px;align-items:center;border:0;background:none;
-  padding:8px;cursor:pointer;font-family:inherit;text-align:left;width:100%}
-.qitem:hover{background:#f7f7f5}
-.qitem[aria-current="true"]{background:var(--wash)}
-.qitem .th{width:38px;height:48px;background:var(--swatch);object-fit:cover}
-.qitem .nm{font-size:12.5px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.qitem[aria-current="true"] .nm{color:var(--ink)}
-.qitem .st{font-family:var(--mono);font-size:11.5px;color:var(--ink-6)}
-.qitem .st.run{color:var(--ink)}
-.qitem .st.fail{color:var(--clay)}
-.qitem .st.ok{color:var(--sage-ink)}
+/* Render and QC share the same production frame */
+.split4,.split5{height:100%;display:grid;grid-template-columns:226px minmax(0,1fr) 252px;gap:48px;min-height:0}
 .canvas{min-height:0;min-width:0;display:grid;place-items:center}
-.canvas .frame{height:100%;max-width:100%;aspect-ratio:3/4;background:var(--swatch);display:grid;place-items:center;position:relative;overflow:hidden}
-.canvas .frame img{width:100%;height:100%;object-fit:contain}
-.canvas .over{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:8px;
-  background:var(--swatch);padding:24px;text-align:center}
-.canvas .over b{font-family:var(--serif);font-size:20px;font-weight:400}
-.canvas .over span{font-size:12.5px;color:var(--ink-5);max-width:32ch;line-height:1.5}
-.meta-col{display:flex;flex-direction:column;gap:13px;min-height:0}
-.meta-col h2{font-family:var(--serif);font-size:18px;font-weight:400;line-height:1.25;overflow-wrap:anywhere}
-.kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
-.kv .k{font-size:12.5px;color:var(--ink-5)}
-.kv .v{font-family:var(--mono);font-size:12.5px}
+.canvas .frame{height:100%;max-width:100%;aspect-ratio:3/4;background:var(--image);display:grid;place-items:center;position:relative;overflow:hidden}.canvas .frame img{width:100%;height:100%;object-fit:contain}
+.canvas .over,.busy-veil{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:10px;background:var(--image);padding:24px;text-align:center}
+.canvas .over b,.busy-veil b{font:400 20px/1.3 var(--serif)}.canvas .over span,.busy-veil span{font-size:13px;max-width:32ch;color:var(--text-2);line-height:1.5}
+.meta-col{display:flex;flex-direction:column;gap:16px;min-height:0}.meta-col h2{font:400 19px/1.25 var(--serif);overflow-wrap:anywhere}
+.kv{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.kv .k{font:400 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mono-2)}.kv .v{font:400 12px var(--mono);text-align:right}
 
-/* ------------------------------- step 05 -------------------------------- */
-.split5{height:100%;display:grid;grid-template-columns:minmax(0,1fr) clamp(200px,21vw,284px);gap:var(--gap);min-height:0}
-.qc-left{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
-.qc-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;row-gap:8px}
-.chips{display:flex;gap:6px;min-width:0;flex-wrap:wrap}
-.chip{border:0;background:var(--wash);color:var(--ink-3);padding:6px 11px;font-family:var(--mono);font-size:11.5px;cursor:pointer}
-.chip[aria-current="true"]{background:var(--ink);color:#fff}
-.chip:disabled{opacity:.45;cursor:not-allowed}
-/* The frame borrows the AI image's own aspect ratio, so the photo fills its
-   height exactly — never cropped, never marooned in empty space. */
-.compare-wrap{flex:1;min-height:0;min-width:0;display:grid;place-items:center}
-.compare{height:100%;max-width:100%;aspect-ratio:var(--ar,2/3);position:relative;overflow:hidden;
-  cursor:ew-resize;touch-action:none;background:var(--swatch)}
-.layer{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden}
-.layer img{width:100%;height:100%;object-fit:contain;transform:scale(var(--z,1));transform-origin:var(--ox,50%) var(--oy,50%)}
-/* Both layers stay full-size and perfectly registered; the top one is CLIPPED,
-   never resized. Shrinking its box would rescale the photo inside it and the
-   two images would no longer line up. */
-.layer.top{background:#fff;width:100%;clip-path:inset(0 var(--clip,50%) 0 0)}
-/* Tags sit over photography, so they carry their own scrim. */
-.compare .tagL,.compare .tagR{position:absolute;top:12px;font-family:var(--mono);font-size:11.5px;
-  white-space:nowrap;z-index:3;background:rgba(255,255,255,.82);padding:3px 7px;color:var(--ink)}
-.compare .tagL{left:12px}
-.compare .tagR{right:12px}
-.handleLine{position:absolute;top:0;bottom:0;width:1px;background:var(--ink);z-index:4}
-.handleKnob{position:absolute;top:50%;width:30px;height:30px;margin-left:-15px;margin-top:-15px;border-radius:50%;
-  background:var(--ink);color:#fff;display:grid;place-items:center;font-size:11px;z-index:5}
-/* Step 05 needs the same "working" signal step 04 has, or a 80s regenerate
-   looks like a frozen screen and people reload — losing the whole session. */
-.busy-veil{position:absolute;inset:0;z-index:6;display:grid;place-content:center;justify-items:center;gap:8px;
-  background:rgba(255,255,255,.9);padding:24px;text-align:center}
-.busy-veil b{font-family:var(--serif);font-size:20px;font-weight:400}
-.busy-veil span{font-size:12.5px;color:var(--ink-5);max-width:34ch;line-height:1.5}
-.qc-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;row-gap:8px}
-.vset{display:flex;gap:6px}
-.vbtn{border:0;background:var(--wash);color:var(--ink-3);padding:5px 10px;font-family:var(--mono);font-size:11.5px;cursor:pointer}
-.vbtn[aria-pressed="true"]{background:var(--ink);color:#fff}
-.qc-right{display:flex;flex-direction:column;gap:13px;min-height:0}
-.qc-score{display:flex;align-items:baseline;justify-content:space-between}
-.qc-score .k{font-size:12.5px;color:var(--ink-5)}
-.qc-score .v{font-family:var(--serif);font-size:32px;line-height:1}
-.qc-list{flex:1;min-height:0;display:flex;flex-direction:column;gap:9px}
-.qc-list .kv .k{font-size:13px;color:var(--ink-2)}
-.qc-list .kv .v{color:var(--ink-5)}
-.qc-acts{display:flex;flex-direction:column;gap:8px}
-.qc-acts .pair{display:flex;gap:16px}
+/* QC comparison */
+.compare{height:100%;min-height:0;max-width:100%;aspect-ratio:3/4;position:relative;overflow:hidden;cursor:ew-resize;touch-action:none;background:var(--image);margin:0 auto}
+.layer{position:absolute;inset:0;display:grid;place-items:center;overflow:hidden}.layer img{width:100%;height:100%;object-fit:contain}
+.layer.top{width:100%;background:#fff;clip-path:inset(0 var(--clip,50%) 0 0)}
+.handleLine{position:absolute;top:0;bottom:0;width:1px;background:var(--ink);z-index:4}.busy-veil{z-index:6;background:rgba(246,245,243,.94)}
+.qc-right{display:flex;flex-direction:column;gap:20px;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;padding-right:14px}
+.qc-controls{flex:0 0 auto;display:flex;flex-direction:column;gap:11px;font:400 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.qc-position,.qc-versions{display:flex;align-items:baseline;justify-content:space-between;gap:12px}.qc-position .k,.qc-versions .k{color:var(--mono-2)}
+.vset{display:flex;gap:14px}.vbtn{color:var(--faint);font:400 11px var(--mono);letter-spacing:.08em}.vbtn[aria-pressed="true"]{color:var(--ink)}
+.qc-score{flex:0 0 auto;display:flex;align-items:baseline;justify-content:space-between}.qc-score .k{font:400 11px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mono-2)}.qc-score .v{font:400 32px/1 var(--serif)}
+.qc-list{flex:0 0 auto;min-height:0;display:flex;flex-direction:column;gap:11px}.qc-list .kv .k{font:400 13px var(--sans);letter-spacing:0;text-transform:none;color:var(--ink)}.qc-list .kv .v{font:400 12px var(--mono);color:var(--text-2)}.qc-note-head{margin-top:8px}
+.qc-acts{flex:0 0 auto;display:flex;flex-direction:column;gap:14px;padding-top:4px}.qc-acts .solid{padding:13px 22px}.qc-acts .pair{display:flex;gap:18px;flex-wrap:wrap}
 
-/* ------------------------------- footer --------------------------------- */
-.foot{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:clamp(10px,1.4vh,18px) 0 clamp(12px,1.8vh,22px)}
-.foot .note{font-size:13px;color:var(--ink-5)}
-.foot .note b{color:var(--ink);font-weight:500}
-.foot .acts{display:flex;align-items:center;gap:18px}
-.back{border:0;background:none;padding:0;font-family:inherit;font-size:13.5px;color:var(--ink-3);cursor:pointer}
-.back:hover{color:var(--ink)}
+/* Footer, feedback and lightbox */
+.foot{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:28px 0 26px}.foot .note{font:400 11px/1.45 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mono-2)}.foot .note b{color:var(--ink);font-weight:400}
+.foot .acts{display:flex;align-items:center;gap:28px}.back{min-width:150px;text-align:right}
+.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,8px);background:var(--ink);color:#fff;padding:9px 16px;opacity:0;pointer-events:none;transition:.16s;z-index:60}.toast.on{opacity:1;transform:translate(-50%,0)}
+dialog.light{border:0;padding:0;background:none;max-width:min(92vw,1000px)}dialog.light::backdrop{background:rgba(17,17,18,.62)}
+.light-in{background:#fff;display:flex;flex-direction:column;max-height:90vh}.light-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}.light-hd strong{font-weight:500}.light-bd{min-height:0;overflow:auto;background:var(--image)}.light-bd img{width:100%;max-height:76vh;object-fit:contain}
 
-/* -------------------------------- toast --------------------------------- */
-.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,8px);background:var(--ink);color:#fff;
-  padding:9px 16px;font-size:12.5px;opacity:0;pointer-events:none;transition:opacity .16s,transform .16s;z-index:60}
-.toast.on{opacity:1;transform:translate(-50%,0)}
-
-/* ------------------------------- lightbox ------------------------------- */
-dialog.light{border:0;padding:0;background:none;max-width:min(92vw,1000px)}
-dialog.light::backdrop{background:rgba(26,26,28,.6)}
-.light-in{background:#fff;display:flex;flex-direction:column;max-height:90vh}
-.light-hd{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}
-.light-hd strong{font-size:13px;font-weight:500}
-.light-bd{min-height:0;overflow:auto;background:var(--wash-2)}
-.light-bd img{width:100%;height:auto;max-height:76vh;object-fit:contain}
-
-/* ------------------------------ responsive ------------------------------ */
-@media (max-width:1080px){
-  .split4{grid-template-columns:clamp(140px,18vw,200px) minmax(0,1fr);grid-template-areas:"q c" "m m"}
-  .queue{grid-area:q} .canvas{grid-area:c} .meta-col{grid-area:m}
+@media(max-width:1080px){
+  .split4,.split5{grid-template-columns:200px minmax(0,1fr);grid-template-areas:"q c" "r r";gap:28px}
+  .split4>.queue,.split5>.queue{grid-area:q}.split4>.canvas,.split5>.canvas{grid-area:c}.meta-col,.qc-right{grid-area:r;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 }
-@media (max-width:900px){
-  html,body{overflow:auto}
-  .shell{height:auto;min-height:100vh}
-  .split2,.split3,.split4,.split5{grid-template-columns:minmax(0,1fr);height:auto}
-  .detail3-body{grid-template-columns:minmax(0,1fr)}
-  .compare{min-height:56vh}
-  .canvas .frame{height:auto;width:100%}
-  .screen{min-height:0}
+@media(max-width:900px){
+  html,body{height:auto;overflow:auto}.shell{height:auto;min-height:100vh;padding:0 20px;overflow:visible}.steps{overflow-x:auto}
+  .title-row{padding-bottom:20px}.split2,.split3,.split4,.split5{grid-template-columns:minmax(0,1fr);grid-template-areas:none;height:auto;gap:28px}
+  .split4>.queue,.split5>.queue,.split4>.canvas,.split5>.canvas,.meta-col,.qc-right{grid-area:auto}.meta-col,.qc-right{display:flex}.canvas{min-height:56vh}.canvas .frame,.compare{height:auto;width:100%;max-height:70vh}.screen{min-height:0}.foot{align-items:flex-end}.foot .note{max-width:45%}
 }
-@media (pointer:coarse){
-  .link,.chip,.vbtn{min-height:40px}
-  .view button,.model .shot .rm{opacity:1}
-}
+@media(max-width:640px){.shell{padding:0 14px}.top{padding-top:14px}.steps{gap:12px}.step-slot{min-width:120px}.title-row{align-items:flex-end}.count{display:none}.grid-products{grid-template-columns:1fr}.foot{align-items:stretch}.foot .note{display:none}.foot .acts{width:100%;display:grid;grid-template-columns:1fr 1.4fr}.solid{min-width:0}}
+@media(pointer:coarse){.link,.vbtn,.model-remove{min-height:40px}.view button{opacity:1}}
 </style>
 </head>
 <body>
@@ -328,8 +170,7 @@ dialog.light::backdrop{background:rgba(26,26,28,.6)}
   <header class="row top">
     <span class="wordmark">Studio Flow</span>
     <div class="top-right">
-      <button class="link" data-act="reset" id="resetBtn" hidden>Lượt mới</button>
-      <span class="keyhint">← → đổi bước · 1–5 nhảy bước</span>
+      <button class="link" data-act="reset" id="resetBtn">Lượt mới</button>
       <div class="conn" id="conn"><span class="dot"></span><span id="connText">đang kiểm tra kết nối…</span></div>
     </div>
   </header>
@@ -344,7 +185,7 @@ dialog.light::backdrop{background:rgba(26,26,28,.6)}
       </div>
       <div class="count"><b id="countA">0</b><span id="countB"></span></div>
     </div>
-    <p class="notice" id="notice" hidden></p>
+    <p class="notice" id="notice" role="alert" aria-live="assertive" aria-atomic="true" hidden></p>
 
     <div class="screen is-on" id="s1"></div>
     <div class="screen" id="s2"></div>
@@ -385,19 +226,20 @@ const TYPES=["image/jpeg","image/png","image/webp"];
 const UNIT_SECONDS={codex:{eval:60,render:80},api:{eval:12,render:25}};
 
 const STEPS=[
-  {n:1,label:"Ảnh sản phẩm",  title:"Chọn ảnh sản phẩm",        lede:"Chọn 1–5 ảnh chính. Mỗi ảnh chính trở thành một sản phẩm riêng."},
-  {n:2,label:"Người mẫu",     title:"Ảnh người mẫu dùng chung", lede:"Tải 1–10 ảnh. AI tự chọn người mẫu hợp nhất cho từng sản phẩm."},
-  {n:3,label:"Kiểm tra",      title:"AI kiểm tra đầu vào",      lede:"Điểm số chỉ là lời khuyên. Sản phẩm điểm thấp vẫn tạo thử được."},
-  {n:4,label:"Tạo ảnh",       title:"Tạo ảnh cho từng sản phẩm",lede:"Ảnh lưu tự động, tối đa 4 phiên bản mỗi sản phẩm."},
-  {n:5,label:"Quality Control",title:"Quality Control",         lede:"Kéo thanh giữa khung để so sánh sản phẩm gốc với ảnh AI."}
+  {n:1,label:"Ảnh sản phẩm",title:"Chọn ảnh sản phẩm",lede:"Chọn 1–5 ảnh chính. Mỗi ảnh là một sản phẩm."},
+  {n:2,label:"Người mẫu",title:"Ảnh người mẫu dùng chung",lede:"Tải 1–10 ảnh. Hệ thống chọn mẫu phù hợp cho từng sản phẩm."},
+  {n:3,label:"Kiểm tra",title:"Đánh giá đầu vào",lede:"Điểm thấp không tự chặn bước tạo ảnh."},
+  {n:4,label:"Tạo ảnh",title:"Tạo ảnh",lede:"Tự động lưu, tối đa 4 phiên bản mỗi sản phẩm."},
+  {n:5,label:"QC",title:"QC",lede:"So sánh ảnh sản phẩm với kết quả."}
 ];
 
 const state={
   step:1, products:[], models:[], active:null,
   analyzing:false, batchBusy:false, job:"",
-  apiReady:false, backend:"api", apiModel:"gpt-image-2", allowManualOverride:true,
+  apiReady:false, backend:"api", apiModel:"gpt-image-2",
   connMessage:"đang kiểm tra kết nối…",
-  split:50, dragging:false, zoom:1, panX:50, panY:50, ar:null
+  skipEvaluation:false, skipQc:false,
+  split:50, dragging:false
 };
 let seq=0, viewTarget=null;
 
@@ -408,10 +250,34 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const pad2=n=>String(n).padStart(2,"0");
 const byId=id=>state.products.find(p=>p.id===id);
 const current=()=>byId(state.active)||state.products[0]||null;
-
+function clearProductError(p){
+  if(!p) return;
+  p.error=null; p.errorCode=null; p.retryable=true;
+}
+function setProductError(p,error){
+  p.error=error?.message||"Không thể tạo ảnh.";
+  p.errorCode=error?.code||null;
+  p.retryable=error?.retryable!==false;
+}
+const needsRender=p=>!p.outputs.length;
+// The primary button represents every product still missing an image. A previous
+// failure stays visible on its card, but a fresh button click is an explicit retry.
+const renderQueue=()=>state.products.filter(needsRender);
+const failedQueue=()=>state.products.filter(p=>needsRender(p)&&p.error);
+const missingMappedModels=()=>state.skipEvaluation?Math.max(0,state.products.length-state.models.length):0;
+function mappedModelIndex(p){
+  const productIndex=state.products.findIndex(item=>item.id===p.id);
+  return state.skipEvaluation?Math.max(0,productIndex):(p.selectedModel??0);
+}
 const urlCache=new WeakMap();
 const objUrl=f=>{ if(!urlCache.has(f)) urlCache.set(f,URL.createObjectURL(f)); return urlCache.get(f); };
 const dataCache=new WeakMap();
+function releaseFile(f){
+  if(!f) return;
+  const url=urlCache.get(f);
+  if(url) URL.revokeObjectURL(url);
+  urlCache.delete(f); dataCache.delete(f);
+}
 function asDataUrl(f){
   if(dataCache.has(f)) return dataCache.get(f);
   const job=new Promise((res,rej)=>{ const r=new FileReader();
@@ -454,7 +320,10 @@ async function screenFiles(files){
 const nameOf=f=>f.name.replace(/\.[^.]+$/,"").replace(/[_-](front|back|side|detail|main)$/i,"")
   .replace(/[_-]+/g," ").trim()||`Sản phẩm ${seq+1}`;
 
-function stale(p){ p.evaluation=null; p.candidates=[]; p.selectedModel=null; p.aiPick=null; }
+function stale(p,dropOutputs=false){
+  p.evaluation=null; p.evaluationSkipped=false; p.candidates=[]; p.selectedModel=null; p.aiPick=null; clearProductError(p);
+  if(dropOutputs){ p.outputs=[]; p.selectedOutput=0; p.status="idle"; p.lastQc=null; }
+}
 
 async function addProducts(files){
   const room=MAX_PRODUCTS-state.products.length;
@@ -462,7 +331,8 @@ async function addProducts(files){
   const {ok,bad}=await screenFiles(files);
   ok.slice(0,room).forEach(f=>{ seq+=1;
     state.products.push({id:`p${seq}`,name:nameOf(f),files:[f],evaluation:null,candidates:[],
-      selectedModel:null,aiPick:null,outputs:[],selectedOutput:0,status:"idle",error:null,lastQc:null}); });
+      selectedModel:null,aiPick:null,outputs:[],selectedOutput:0,status:"idle",error:null,errorCode:null,
+      retryable:true,lastQc:null}); });
   if(ok.length) state.active=state.products[state.products.length-1].id;
   notice(bad.length?"Một số ảnh bị bỏ qua":"",bad.join(" "));
   if(ok.length) notify(`Đã thêm ${Math.min(ok.length,room)} sản phẩm.`);
@@ -472,14 +342,15 @@ async function addViews(p,files){
   const room=MAX_VIEWS-p.files.length;
   if(room<=0){ notice("Sản phẩm đã đủ ảnh",`Mỗi sản phẩm giữ tối đa ${MAX_VIEWS} ảnh.`); return; }
   const {ok,bad}=await screenFiles(files);
-  p.files.push(...ok.slice(0,room)); stale(p);
+  if(ok.length){ p.files.push(...ok.slice(0,room)); stale(p,true); }
   notice(bad.length?"Một số ảnh bị bỏ qua":"",bad.join(" ")); render();
 }
 async function addModels(files){
   const room=MAX_MODELS-state.models.length;
   if(room<=0){ notice("Đã đủ 10 ảnh người mẫu","Xoá bớt nếu muốn thay ảnh khác."); return; }
   const {ok,bad}=await screenFiles(files);
-  state.models.push(...ok.slice(0,room)); state.products.forEach(stale);
+  state.models.push(...ok.slice(0,room));
+  if(ok.length) state.products.forEach(p=>stale(p,true));
   notice(bad.length?"Một số ảnh bị bỏ qua":"",bad.join(" "));
   if(ok.length) notify(`Đã thêm ${Math.min(ok.length,room)} ảnh người mẫu.`); render();
 }
@@ -488,25 +359,35 @@ async function addModels(files){
 function canEnter(n){
   if(n<=1) return true;
   if(n===2) return state.products.length>0;
-  if(n===3) return state.products.length>0&&state.models.length>0;
-  if(n===4) return state.products.some(p=>p.evaluation);
-  return state.products.some(p=>p.outputs.length);
+  if(n===3) return !state.skipEvaluation&&state.products.length>0&&state.models.length>0;
+  if(n===4) return state.products.some(p=>p.evaluation)||(state.skipEvaluation&&state.products.length>0&&!missingMappedModels());
+  return !state.skipQc&&state.products.some(p=>p.outputs.length);
 }
 function go(n){ n=clamp(n,1,5); if(!canEnter(n)) return; state.step=n; render();
   $("#title").focus({preventScroll:true}); }
 
 function renderSteps(){
   $("#steps").innerHTML=STEPS.map(s=>{
-    const cls=["step",s.n===state.step?"is-now":"",s.n<state.step?"is-past":""].filter(Boolean).join(" ");
+    const skipped=(s.n===3&&state.skipEvaluation)||(s.n===5&&state.skipQc);
+    const cls=["step",s.n===state.step?"is-now":"",s.n<state.step?"is-past":"",skipped?"is-skip":""].filter(Boolean).join(" ");
+    const slotCls=["step-slot",s.n===state.step?"is-now":"",s.n<state.step?"is-past":"",skipped?"is-skip":""].filter(Boolean).join(" ");
     let flag="";
-    if(s.n===3&&state.analyzing) flag='<span class="flag">đang chấm</span>';
+    if(s.n===3&&state.analyzing) flag='<span class="flag">đang chạy</span>';
     if(s.n===4&&state.batchBusy) flag='<span class="flag">đang tạo</span>';
     if(s.n===4&&!state.batchBusy&&state.products.some(p=>p.error)) flag='<span class="flag">có lỗi</span>';
-    return `<button class="${cls}" data-act="step" data-n="${s.n}" ${canEnter(s.n)?"":"disabled"}
-      ${s.n===state.step?'aria-current="step"':""}>
-      <span class="bar"></span>
-      <span class="lab"><span class="n">${pad2(s.n)}</span><span class="t">${esc(s.label)}</span>${flag}</span>
-    </button>`;
+    const option=s.n===3
+      ? `<button class="step-option ${state.skipEvaluation?"is-on":""}" id="skipEvaluation" data-act="toggle-skip-eval" aria-pressed="${state.skipEvaluation}">bỏ qua</button>`
+      :s.n===5
+        ? `<button class="step-option ${state.skipQc?"is-on":""}" id="skipQc" data-act="toggle-skip-qc" aria-pressed="${state.skipQc}">bỏ qua</button>`
+        :"";
+    return `<div class="${slotCls}">
+      <span class="step-bar" aria-hidden="true"></span>
+      <div class="step-line">
+      <button class="${cls}" data-act="step" data-n="${s.n}" ${canEnter(s.n)?"":"disabled"}
+        ${s.n===state.step?'aria-current="step"':""}>
+        <span class="lab"><span class="n">${pad2(s.n)}</span><span class="t">${esc(s.label)}</span>${flag}</span>
+      </button>${option}</div>
+    </div>`;
   }).join("");
 }
 
@@ -537,20 +418,21 @@ function render1(){
 function render2(){
   const cards=state.models.map((f,i)=>`<div class="model">
       <div class="shot"><img src="${objUrl(f)}" alt="Ảnh người mẫu ${i+1}" data-act="zoom"
-        data-src="${objUrl(f)}" data-title="Ảnh người mẫu ${i+1}">
-        <button class="rm" data-act="rm-model" data-i="${i}" aria-label="Xoá ảnh mẫu ${i+1}">✕</button></div>
-      <span class="mono">MẪU ${pad2(i+1)}</span></div>`).join("");
+        data-src="${objUrl(f)}" data-title="Ảnh người mẫu ${i+1}"></div>
+      <div class="model-foot">
+        <span class="mono">MẪU ${pad2(i+1)}${state.skipEvaluation?i<state.products.length?` · SP ${pad2(i+1)}`:" · CHƯA DÙNG":""}</span>
+        <button class="model-remove" data-act="rm-model" data-i="${i}" aria-label="Xoá ảnh mẫu ${i+1}">Xoá</button>
+      </div></div>`).join("");
   const left=MAX_MODELS-state.models.length;
   const tile=left>0?`<button class="tile" style="aspect-ratio:3/4" data-act="pick-model">
-      <span class="plus">+</span><span class="t" style="font-size:12.5px;color:var(--ink-3)">Tải ảnh mẫu</span></button>`:"";
+      <span class="plus">+</span><span class="t" style="color:var(--text-2)">Tải ảnh mẫu</span></button>`:"";
   $("#s2").innerHTML=`<div class="split2">
       <div class="scrollY"><div class="grid-models">${cards}${tile}</div></div>
-      <aside class="aside-col">
-        <h2>Ảnh thế nào thì dễ ra kết quả đẹp?</h2>
+      <aside class="aside-col scrollY">
+        <h2>Ảnh người mẫu nên có</h2>
         <div class="tip"><b>Thấy rõ toàn thân</b><span>Không cắt chân, tay hoặc phần trang phục quan trọng.</span></div>
-        <div class="tip"><b>Đứng tự nhiên</b><span>Ít che thân người, góc máy chính diện hoặc chếch 3/4.</span></div>
-        <div class="tip"><b>Ảnh đủ sáng, nét</b><span>Nền đơn giản giúp AI giữ đúng người mẫu hơn.</span></div>
-        <span class="serif-note" style="margin-top:8px">${state.models.length} ảnh này dùng chung cho ${state.products.length} sản phẩm — không cần tải lại cho từng sản phẩm.</span>
+        <div class="tip"><b>Ít che cơ thể</b><span>Ưu tiên góc chính diện hoặc chếch 3/4.</span></div>
+        <div class="tip"><b>Đủ sáng, rõ nét</b><span>Ưu tiên nền đơn giản, ít chi tiết.</span></div>
       </aside></div>`;
 }
 
@@ -558,33 +440,33 @@ function render2(){
 function render3(){
   if(!state.products.length){ $("#s3").innerHTML=`<p class="lede">Chưa có sản phẩm. Quay lại bước 01.</p>`; return; }
   const p=current();
-  const rows=state.products.map((prod,i)=>{
+  const rows=state.products.map(prod=>{
     const ev=prod.evaluation, sc=ev?Number(ev.compatibility?.final_score)||0:null;
     const b=sc==null?null:band(sc);
     const running=state.analyzing&&state.job===prod.id;
     return `<button class="pick" data-act="pick" data-id="${prod.id}" aria-current="${prod.id===p.id}">
       <img class="th" src="${objUrl(prod.files[0])}" alt="">
       <span class="col"><span class="nm">${esc(prod.name)}</span>
-        <span class="gr">${running?"đang chấm…":b?esc(b.label):"chờ chấm"}</span></span>
+        <span class="gr">${running?"đang đánh giá…":b?esc(b.label):"chờ đánh giá"}</span></span>
       <span class="sc">${sc==null?"—":sc}</span></button>`;
   }).join("");
 
   const ev=p.evaluation;
   let right;
   if(!ev){
-    right=`<p class="lede">${state.analyzing?"AI đang chấm lần lượt từng sản phẩm.":"Chưa chấm sản phẩm này."}
+    right=`<p class="lede">${state.analyzing?"Đang đánh giá lần lượt từng sản phẩm.":"Chưa đánh giá sản phẩm này."}
       ${state.analyzing?'<span class="spin"></span>':""}</p>`;
   }else{
     const mq=Number(ev.input_quality?.model?.score)||0;
     const pq=Number(ev.input_quality?.product?.score)||0;
     const cs=Number(ev.compatibility?.final_score)||0;
-    const cell=(k,v,n,warn)=>`<div class="scorecell"><span class="k">${k}</span>
-      <span class="v">${band(v).n}/5</span><span class="n ${warn?"is-warn":""}">${n}</span></div>`;
+    const cell=(k,v,warn)=>`<div class="scorecell"><span class="k">${k}</span>
+      <span class="v">${v}<small>/100</small></span><span class="n ${warn?"is-warn":""}">${band(v).label}</span></div>`;
     const notes=[];
     (ev.risks||[]).slice(0,4).forEach(r=>notes.push(r.reason||r.factor));
     if(ev.compatibility?.score_cap_reason) notes.push(ev.compatibility.score_cap_reason);
     (ev.recommended_reference_requirements||[]).slice(0,2).forEach(r=>notes.push(r));
-    if(!notes.length) notes.push("Không thấy rủi ro đáng kể. Ảnh đầu vào đủ để dựng lại sản phẩm.");
+    if(!notes.length) notes.push("Không phát hiện rủi ro đáng kể.");
     // Every model image was scored — show them all so the choice stays the user's.
     const cands=(p.candidates||[]).slice().sort((a,b)=>a.index-b.index);
     const chosen=p.selectedModel??0;
@@ -596,39 +478,36 @@ function render3(){
       return `<button class="cand ${isOn?"is-on":""}" data-act="use-model" data-id="${p.id}" data-i="${c.index}">
         <span class="shot"><img src="${objUrl(f)}" alt="Ảnh mẫu ${c.index+1}"></span>
         <span class="cl"><span class="nm">Mẫu ${pad2(c.index+1)}</span><span class="sc">${sc}</span></span>
-        <span class="gr">${esc(b.label)}${isAi?"<br><b>AI đề xuất</b>":""}</span>
+        <span class="gr">${esc(b.label)}${isAi?" · Đề xuất":""}</span>
       </button>`;
     }).join("");
-    const humanPicked=p.aiPick!=null&&chosen!==p.aiPick;
-
     right=`<div class="detail3">
       <div class="scores">
-        ${cell("Ảnh người mẫu",mq,`${mq}/100`,mq<82)}
-        ${cell("Ảnh sản phẩm",pq,`${pq}/100`,pq<85)}
-        ${cell("Mức tương thích",cs,`${cs}/100`,cs<82)}
+        ${cell("Ảnh người mẫu",mq,mq<82)}
+        ${cell("Ảnh sản phẩm",pq,pq<85)}
+        ${cell("Mức tương thích",cs,cs<82)}
       </div>
       <div class="cand-block">
         <div class="cand-head">
-          <span class="eyebrow">Người mẫu · ${cands.length} ảnh đã chấm</span>
-          <span class="mono">${humanPicked?"anh đang chọn khác AI":"đang dùng ảnh AI đề xuất"}</span>
+          <span class="eyebrow">Chọn người mẫu</span>
         </div>
         <div class="cand-row">${grid}</div>
       </div>
       <div class="notes scrollY">
-        <span class="eyebrow">AI ghi nhận · mẫu ${pad2(chosen+1)}</span>
+        <span class="eyebrow">Nhận xét · mẫu ${pad2(chosen+1)}</span>
         ${notes.map(n=>`<p>${esc(n)}</p>`).join("")}
         <button class="link" style="align-self:flex-start" data-act="recheck" data-id="${p.id}"
-          ${state.analyzing?"disabled":""}>Chấm lại sản phẩm này</button>
+          ${state.analyzing?"disabled":""}>Đánh giá lại sản phẩm này</button>
       </div></div>`;
   }
   $("#s3").innerHTML=`<div class="split3"><div class="pick-list scrollY">${rows}</div>${right}</div>`;
 }
 
 /* -------------------------------- step 04 ------------------------------- */
-const STATUS={waiting:["Waiting",""],rendering:["Generating","run"],qc:["Needs review","ok"],
-  approved:["Approved","ok"],failed:["Failed","fail"]};
+const STATUS={waiting:["Chờ tạo",""],rendering:["Đang tạo","run"],qc:["Chờ duyệt","ok"],
+  done:["Đã tạo","ok"],approved:["Đã duyệt","ok"],failed:["Có lỗi","fail"]};
 function statusOf(p){ if(p.error) return "failed"; if(p.status==="rendering") return "rendering";
-  if(p.status==="approved") return "approved"; if(p.outputs.length) return "qc"; return "waiting"; }
+  if(p.status==="approved") return "approved"; if(p.status==="done") return "done"; if(p.outputs.length) return "qc"; return "waiting"; }
 
 function render4(){
   if(!state.products.length){ $("#s4").innerHTML=`<p class="lede">Chưa có sản phẩm. Quay lại bước 01.</p>`; return; }
@@ -646,27 +525,31 @@ function render4(){
   let over="";
   if(st==="rendering") over=`<div class="over"><span class="spin"></span><b>Đang tạo ảnh</b>
     <span>${esc(p.name)}${eta(1,"render")?` · thường mất ${eta(1,"render")}`:""}</span></div>`;
-  else if(st==="failed") over=`<div class="over"><b>Không tạo được</b><span>${esc(p.error||"")}</span>
-    <button class="link" data-act="retry" data-id="${p.id}">Thử lại</button></div>`;
+  else if(st==="failed"){
+    const blocked=p.errorCode==="moderation_blocked";
+    over=`<div class="over"><b>${blocked?"Dịch vụ tạo ảnh đã chặn":"Không tạo được"}</b><span>${esc(p.error||"")}</span>
+      ${blocked?`<div class="pair"><button class="link" data-act="step" data-n="2">Ảnh người mẫu</button>
+        <button class="link" data-act="step" data-n="1">Ảnh sản phẩm</button></div>`
+        :p.retryable!==false?`<button class="link" data-act="retry" data-id="${p.id}">Thử lại</button>`:""}</div>`;
+  }
   else if(!out) over=`<div class="over"><b>Chờ đến lượt</b><span>Sản phẩm này chưa được tạo.</span></div>`;
 
-  const meta=[["Trạng thái",STATUS[st][0]],["Ảnh tham chiếu",String(p.files.length)],
-    ["Người mẫu","Mẫu "+pad2((p.selectedModel??0)+1)],
-    ["Phiên bản",p.outputs.length?`${p.selectedOutput+1}/${MAX_VERSIONS}`:`0/${MAX_VERSIONS}`],
-    ["Còn tạo lại",String(Math.max(0,MAX_VERSIONS-p.outputs.length))]];
+  const meta=[["Trạng thái",STATUS[st][0]],["Góc sản phẩm",String(p.files.length)],
+    ["Người mẫu","Mẫu "+pad2(mappedModelIndex(p)+1)],
+    ["Phiên bản",p.outputs.length?`${p.selectedOutput+1}/${MAX_VERSIONS}`:`0/${MAX_VERSIONS}`]];
 
   $("#s4").innerHTML=`<div class="split4">
     <div class="queue scrollY">${rows}</div>
     <div class="canvas"><div class="frame">
-      ${out?`<img src="${out.image}" alt="Ảnh AI của ${esc(p.name)}">`:""}
-      ${over||`<span class="mono" style="position:absolute;bottom:12px;left:12px">kết quả AI · V${p.selectedOutput+1}</span>`}
+      ${out?`<img src="${out.image}" alt="Kết quả của ${esc(p.name)}">`:""}
+      ${over}
     </div></div>
     <aside class="meta-col">
       <h2>${esc(p.name)}</h2>
       ${meta.map(([k,v])=>`<div class="kv"><span class="k">${k}</span><span class="v">${esc(v)}</span></div>`).join("")}
       ${out?.savedPath?`<div class="kv"><span class="k">Lưu tự động</span><span class="v">✓</span></div>`:""}
       <button class="link" style="margin-top:auto;align-self:flex-start" data-act="regen" data-id="${p.id}"
-        ${out&&!state.batchBusy&&p.outputs.length<MAX_VERSIONS?"":"disabled"}>Tạo lại (còn ${Math.max(0,MAX_VERSIONS-p.outputs.length)} lần)</button>
+        ${out&&!state.batchBusy&&p.outputs.length<MAX_VERSIONS?"":"disabled"}>Tạo lại (${Math.max(0,MAX_VERSIONS-p.outputs.length)})</button>
     </aside></div>`;
 }
 
@@ -678,56 +561,60 @@ function render5(){
   const out=p.outputs[p.selectedOutput];
   const left=Math.max(0,MAX_VERSIONS-p.outputs.length);
   const qc=p.lastQc;
+  const qcSkipped=out.qcSkipped===true;
 
-  const chips=state.products.map((prod,i)=>`<button class="chip" data-act="pick" data-id="${prod.id}"
-    aria-current="${prod.id===p.id}" ${prod.outputs.length?"":"disabled"}>${pad2(i+1)} ${esc(prod.name).toUpperCase()}</button>`).join("");
+  const queue=state.products.map((prod,i)=>{
+    const s=statusOf(prod), [txt,cls]=STATUS[s];
+    return `<button class="qitem" data-act="pick" data-id="${prod.id}" aria-current="${prod.id===p.id}"
+      ${prod.outputs.length?"":"disabled"}>
+      <img class="th" src="${objUrl(prod.files[0])}" alt="">
+      <span class="col"><span class="nm">${pad2(i+1)} · ${esc(prod.name)}</span>
+        <span class="st ${cls}">${txt}${prod.outputs.length?` · V${prod.selectedOutput+1}`:""}</span></span>
+    </button>`;
+  }).join("");
 
   const rows=qc&&!qc.error?[["Phom dáng",qc.silhouette,25],["Chi tiết may",qc.construction_detail,25],
     ["Độ dài & tỷ lệ",qc.length_proportion,15],["Màu & chất liệu",qc.color_material,15],
     ["Giữ đúng người mẫu",qc.model_pose_preservation,10],["Giữ góc máy & cảnh",qc.scene_camera_preservation,10]]:[];
+  const rerenderNotes=(qc?.rerender_notes_vi?.length?qc.rerender_notes_vi:qc?.rerender_reasons)||[];
+  const qcMessage=qc?.error?`Không đánh giá được: ${esc(qc.error)}`
+    :qcSkipped?"Không chạy QC cho ảnh này."
+      :!qc?"Chưa có điểm QC.":"";
 
   $("#s5").innerHTML=`<div class="split5">
-    <div class="qc-left">
-      <div class="qc-bar">
-        <div class="chips">${chips}</div>
-        <span class="mono">kéo thanh dọc để so sánh · ${Math.round(state.split)}%</span>
-      </div>
-      <div class="compare-wrap">
-        <div class="compare" id="compare" style="--ar:${state.ar||"2/3"}">
-          <div class="layer"><img id="imgAI" src="${out.image}" alt="Ảnh AI"></div>
-          <div class="layer top" id="layerSrc" style="--clip:${100-state.split}%">
-            <img id="imgSrc" src="${objUrl(p.files[0])}" alt="Sản phẩm gốc">
-          </div>
-          <span class="tagL">SẢN PHẨM GỐC</span>
-          <span class="tagR">ẢNH AI · BẢN ${p.selectedOutput+1}/${MAX_VERSIONS}</span>
-          <div class="handleLine" id="hLine" style="left:${state.split}%"></div>
-          <div class="handleKnob" id="hKnob" style="left:${state.split}%">⇄</div>
-          ${p.status==="rendering"?`<div class="busy-veil"><span class="spin"></span>
-            <b>Đang tạo bản V${p.outputs.length+1}</b>
-            <span>${esc(p.name)}${eta(1,"render")?` · thường mất ${eta(1,"render")}`:""}</span>
-            <span class="mono">bản hiện tại vẫn giữ nguyên</span></div>`:""}
+    <div class="queue scrollY">${queue}</div>
+    <div class="canvas">
+      <div class="compare" id="compare" tabindex="0" role="slider"
+        aria-label="So sánh ảnh gốc và kết quả" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(state.split)}">
+        <div class="layer"><img id="imgAI" src="${out.image}" alt="Kết quả"></div>
+        <div class="layer top" id="layerSrc" style="--clip:${100-state.split}%">
+          <img id="imgSrc" src="${objUrl(p.files[0])}" alt="Sản phẩm gốc">
         </div>
-      </div>
-      <div class="qc-foot">
-        <div class="vset">${p.outputs.map((_,i)=>`<button class="vbtn" data-act="version" data-i="${i}"
-          aria-pressed="${i===p.selectedOutput}">V${i+1}</button>`).join("")}</div>
-        <span class="mono">${out.savedPath?"đã lưu tự động trên máy":""} · còn ${left} lần tạo lại</span>
+        <div class="handleLine" id="hLine" style="left:${state.split}%"></div>
+        ${p.status==="rendering"?`<div class="busy-veil"><span class="spin"></span>
+          <b>Đang tạo bản V${p.outputs.length+1}</b>
+          <span>${esc(p.name)}${eta(1,"render")?` · thường mất ${eta(1,"render")}`:""}</span>
+          <span class="mono">Bản hiện tại vẫn được giữ</span></div>`:""}
       </div>
     </div>
-
     <aside class="qc-right">
-      <div class="qc-score"><span class="k">Đánh giá của AI</span>
-        <span class="v">${qc&&!qc.error?(Number(qc.product_fidelity_score)||0):"—"}</span></div>
-      <div class="qc-list scrollY">
+      <div class="qc-controls">
+        <div class="qc-position"><span class="k">Vị trí so sánh</span><span id="splitValue">${Math.round(state.split)}%</span></div>
+        <div class="qc-versions"><span class="k">Phiên bản</span>
+          <div class="vset">${p.outputs.map((_,i)=>`<button class="vbtn" data-act="version" data-i="${i}"
+            aria-pressed="${i===p.selectedOutput}">V${i+1}</button>`).join("")}</div></div>
+      </div>
+      <div class="qc-score"><span class="k">Điểm QC</span>
+        <span class="v">${qc&&!qc.error?`${Number(qc.product_fidelity_score)||0}<small>/100</small>`:"—"}</span></div>
+      <div class="qc-list">
         ${rows.map(([k,v,m])=>`<div class="kv"><span class="k">${k}</span><span class="v">${Number(v)||0}/${m}</span></div>`).join("")}
-        ${qc?.error?`<p class="lede" style="font-size:12.5px">Không chấm được tự động: ${esc(qc.error)}</p>`:""}
-        ${!qc?`<p class="lede" style="font-size:12.5px">AI chấm ngay sau khi tạo xong ảnh.</p>`:""}
-        ${(qc?.rerender_reasons||[]).length?`<span class="eyebrow" style="margin-top:6px">Nếu tạo lại</span>
-          ${qc.rerender_reasons.slice(0,3).map(r=>`<p class="lede" style="font-size:12.5px">${esc(r)}</p>`).join("")}`:""}
-        <span class="serif-note" style="margin-top:4px">Quyết định cuối cùng là của anh.</span>
+        ${qcMessage?`<p class="lede">${qcMessage}</p>`:""}
+        <span class="eyebrow qc-note-head">Nếu tạo lại</span>
+        ${rerenderNotes.length?rerenderNotes.slice(0,3).map(r=>`<p class="lede">${esc(r)}</p>`).join("")
+          :`<p class="lede">Không có yêu cầu tạo lại.</p>`}
       </div>
       <div class="qc-acts">
-        <button class="solid" data-act="approve" data-id="${p.id}" ${state.batchBusy?"disabled":""}>Duyệt &amp; tải ảnh</button>
+        <button class="solid" data-act="approve" data-id="${p.id}" ${state.batchBusy||p.status==="approved"?"disabled":""}>${p.status==="approved"?"Đã duyệt":"Duyệt ảnh"}</button>
         <div class="pair">
           <button class="link" data-act="regen" data-id="${p.id}" ${!state.batchBusy&&left>0?"":"disabled"}>Tạo lại (${left})</button>
           <button class="link" data-act="download" data-id="${p.id}">Tải bản này</button>
@@ -735,30 +622,21 @@ function render5(){
         </div>
       </div>
     </aside></div>`;
-  // Adopt the generated image's real ratio once it decodes, then keep it.
-  const ai=$("#imgAI");
-  if(ai){
-    const adopt=()=>{
-      if(!ai.naturalWidth||!ai.naturalHeight) return;
-      const ar=`${ai.naturalWidth}/${ai.naturalHeight}`;
-      if(ar!==state.ar){ state.ar=ar; $("#compare")?.style.setProperty("--ar",ar); }
-    };
-    ai.complete?adopt():ai.addEventListener("load",adopt,{once:true});
-  }
-  applyZoom();
 }
 
 /* ------------------------------ head + foot ----------------------------- */
 function renderHead(){
   const s=STEPS[state.step-1];
-  $("#title").textContent=s.title;
-  $("#lede").textContent=s.lede;
+  $("#title").textContent=state.step===2&&state.skipEvaluation?"Ghép sản phẩm với người mẫu":s.title;
+  $("#lede").textContent=state.step===2&&state.skipEvaluation
+    ? "Mỗi sản phẩm dùng ảnh mẫu có cùng số thứ tự."
+    :s.lede;
   const done=state.products.filter(p=>p.evaluation).length;
   const made=state.products.filter(p=>p.outputs.length).length;
   const ok=state.products.filter(p=>p.status==="approved").length;
   const map={1:[`${state.products.length}/${MAX_PRODUCTS}`,"sản phẩm"],
              2:[`${state.models.length}/${MAX_MODELS}`,"ảnh mẫu"],
-             3:[`${done}/${state.products.length}`,"đã chấm"],
+             3:[`${done}/${state.products.length}`,"đã đánh giá"],
              4:[`${made}/${state.products.length}`,"hoàn tất"],
              5:[`${ok}/${state.products.length}`,"đã duyệt"]};
   $("#countA").textContent=map[state.step][0];
@@ -767,7 +645,7 @@ function renderHead(){
 
 function renderFoot(){
   const note=$("#footNote"), back=$("#backBtn"), next=$("#nextBtn");
-  const busy=state.analyzing?"AI đang chấm ảnh đầu vào.":state.batchBusy?"AI đang tạo ảnh.":"";
+  const busy=state.analyzing?"Đang đánh giá đầu vào.":state.batchBusy?"Đang tạo ảnh.":"";
   back.style.visibility=state.step===1?"hidden":"visible";
   back.textContent="← "+(STEPS[state.step-2]?.label||"Quay lại");
   back.disabled=Boolean(busy);
@@ -776,36 +654,56 @@ function renderFoot(){
   next.title=busy||"";
 
   if(state.step===1){
-    note.innerHTML=state.products.length?`<b>${state.products.length}</b> sản phẩm đã sẵn sàng.`:"Bắt đầu bằng ảnh sản phẩm.";
+    note.textContent=state.products.length?"Sẵn sàng sang bước người mẫu.":"Bắt đầu bằng ảnh sản phẩm.";
     next.textContent="Ảnh người mẫu →"; next.disabled=!state.products.length; next.onclick=()=>go(2); return;
   }
   if(state.step===2){
-    note.innerHTML=state.models.length?`<b>${state.models.length}</b> ảnh mẫu dùng chung cho ${state.products.length} sản phẩm.`:"Cần ít nhất một ảnh người mẫu.";
-    next.textContent="Kiểm tra đầu vào →"; next.disabled=!state.models.length||!state.products.length; next.onclick=()=>go(3); return;
+    const missingModels=missingMappedModels();
+    const failed=failedQueue().length;
+    const made=state.products.filter(p=>p.outputs.length).length;
+    note.innerHTML=!state.models.length?"Cần ít nhất một ảnh người mẫu."
+      :missingModels?`Cần thêm <b>${missingModels}</b> ảnh mẫu để ghép 1–1 với ${state.products.length} sản phẩm.`
+      :state.skipEvaluation?failed?`<b>${failed}</b> lỗi cũ sẽ được thử lại${made?` · ${made} sản phẩm đã có ảnh`:""}.`
+        :made?`<b>${made}</b> sản phẩm đã có ảnh — chỉ tạo phần còn thiếu.`
+          :`Đủ ảnh để tạo${state.skipQc?" · không chạy QC":""}.`
+      :`<b>${state.models.length}</b> ảnh mẫu dùng chung cho ${state.products.length} sản phẩm${state.skipQc?" · không chạy QC":""}.`;
+    const pend=state.skipEvaluation?[]:state.products.filter(p=>!p.evaluation);
+    const toRender=renderQueue().length;
+    next.textContent=missingModels?`Cần thêm ${missingModels} ảnh mẫu →`
+      :pend.length?`Đánh giá ${pend.length} sản phẩm →`:toRender?`Tạo ${toRender} sản phẩm →`
+        :state.skipQc&&made?`Tải ${made} ảnh →`:"QC →";
+    next.disabled=!state.models.length||!state.products.length||Boolean(missingModels)
+      ||((pend.length||toRender)&&!state.apiReady)||(!pend.length&&!toRender&&!made);
+    next.onclick=pend.length?()=>runAnalysis(pend):toRender?runBatch:state.skipQc?downloadAllOutputs:()=>go(5); return;
   }
   if(state.step===3){
     const pend=state.products.filter(p=>!p.evaluation);
     const units=pend.length*Math.max(1,state.models.length);
     note.innerHTML=state.analyzing
-      ? `<span class="spin"></span> Đang chấm lần lượt.${eta(units,"eval")?` Còn ${eta(units,"eval")}.`:""}`
-      : pend.length?`<b>${pend.length}</b> sản phẩm chưa chấm.${eta(units,"eval")?` Khoảng ${eta(units,"eval")}.`:""}`
-                   :`Đã chấm xong. Điểm thấp vẫn tạo được.`;
-    next.textContent=pend.length?`Chấm ${pend.length} sản phẩm →`:"Tạo ảnh →";
+      ? `<span class="spin"></span> Đang đánh giá lần lượt.${eta(units,"eval")?` Còn ${eta(units,"eval")}.`:""}`
+      : pend.length?`<b>${pend.length}</b> sản phẩm chưa đánh giá.${eta(units,"eval")?` Khoảng ${eta(units,"eval")}.`:""}`
+                   :`Đã đánh giá xong. Sẵn sàng tạo ảnh.`;
+    const toRender=renderQueue().length;
+    next.textContent=pend.length?`Đánh giá ${pend.length} sản phẩm →`:toRender?`Tạo ${toRender} sản phẩm →`:"QC →";
     next.disabled=Boolean(busy)||!state.apiReady||!state.products.length;
-    next.onclick=pend.length?()=>runAnalysis(pend):()=>go(4); return;
+    next.onclick=pend.length?()=>runAnalysis(pend):toRender?runBatch:()=>go(5); return;
   }
   if(state.step===4){
-    const pend=state.products.filter(p=>!p.outputs.length&&!p.error);
+    const pend=renderQueue();
+    const made=state.products.filter(p=>p.outputs.length).length;
+    const failed=failedQueue().length;
     note.innerHTML=state.batchBusy
       ? `<span class="spin"></span> Đang tạo từng sản phẩm.${eta(pend.length,"render")?` Còn ${eta(pend.length,"render")}.`:""}`
-      : pend.length?`<b>${pend.length}</b> sản phẩm chờ tạo.${eta(pend.length,"render")?` Khoảng ${eta(pend.length,"render")}.`:""}`
-                   :`<b>${state.products.filter(p=>p.outputs.length).length}</b> sản phẩm đã có ảnh.`;
-    next.textContent=pend.length?`Tạo ${pend.length} sản phẩm →`:"Quality Control →";
-    next.disabled=Boolean(busy)||!state.apiReady||!state.products.length;
-    next.onclick=pend.length?runBatch:()=>go(5); return;
+      : pend.length?`<b>${pend.length}</b> sản phẩm chưa có ảnh.${eta(pend.length,"render")?` Khoảng ${eta(pend.length,"render")}.`:""}${failed?` ${failed} lỗi cũ sẽ được thử lại.`:""}`
+                   :made?`<b>${made}</b> sản phẩm đã có ảnh.${state.skipQc?" Không chạy QC.":""}`
+                        :"Chưa có sản phẩm để tạo.";
+    next.textContent=pend.length?`Tạo ${pend.length} sản phẩm →`:made
+      ?state.skipQc?`Tải ${made} ảnh →`:"QC →":"Chưa có ảnh";
+    next.disabled=Boolean(busy)||(pend.length>0&&!state.apiReady)||!state.products.length||(!pend.length&&!made);
+    next.onclick=pend.length?runBatch:made?state.skipQc?downloadAllOutputs:()=>go(5):null; return;
   }
   const ok=state.products.filter(p=>p.status==="approved").length;
-  note.innerHTML=`<b>${ok}/${state.products.length}</b> sản phẩm đã duyệt. AI góp ý — anh quyết định.`;
+  note.textContent="";
   next.textContent=ok?`Tải ${ok} ảnh đã duyệt →`:"Chưa có ảnh duyệt";
   next.disabled=!ok||Boolean(busy);
   next.onclick=downloadApproved;
@@ -818,18 +716,8 @@ function render(){
   if(state.step===4) render4(); if(state.step===5) render5();
   renderFoot();
   const reset=$("#resetBtn");
-  if(reset){ reset.hidden=!state.products.length; reset.disabled=state.analyzing||state.batchBusy; }
+  if(reset){ reset.disabled=!state.products.length||state.analyzing||state.batchBusy; }
   persist();
-}
-
-/* --------------------------------- zoom --------------------------------- */
-/* One transform drives both layers, so the split always compares the same region. */
-function applyZoom(){
-  $$(".layer img").forEach(img=>{
-    img.style.setProperty("--z",state.zoom);
-    img.style.setProperty("--ox",state.panX+"%");
-    img.style.setProperty("--oy",state.panY+"%");
-  });
 }
 
 /* --------------------------- session persistence ------------------------- */
@@ -856,31 +744,44 @@ function idbTx(mode,fn){
     tx.onerror=()=>rej(tx.error);
   }));
 }
-const isDemo=()=>location.hash.startsWith("#demo");
-
 let saveTimer=null;
 function persist(){
-  if(isDemo()) return;                       // never let the design harness overwrite real work
   clearTimeout(saveTimer);
   saveTimer=setTimeout(()=>{
     // "rendering" is a transient state; storing it would restore into a stuck spinner.
-    const products=state.products.map(p=>({...p,status:p.status==="rendering"?(p.outputs.length?"qc":"idle"):p.status}));
-    idbTx("readwrite",s=>s.put({v:1,savedAt:Date.now(),seq,step:state.step,active:state.active,
+    const products=state.products.map(p=>({...p,status:p.status==="rendering"?(p.outputs.length?(state.skipQc?"done":"qc"):"idle"):p.status}));
+    idbTx("readwrite",s=>s.put({v:5,savedAt:Date.now(),seq,step:state.step,active:state.active,
+      skipEvaluation:state.skipEvaluation,skipQc:state.skipQc,
       models:state.models,products},DB_KEY)).catch(()=>{});
   },600);
 }
 
 async function restore(){
-  if(isDemo()) return false;
-  let saved=null;
+  let saved;
   try{ saved=await idbTx("readonly",s=>s.get(DB_KEY)); }catch{ return false; }
   if(!saved||!Array.isArray(saved.products)||!saved.products.length) return false;
   seq=saved.seq||saved.products.length;
   state.models=saved.models||[];
-  state.products=saved.products.map(p=>({...p,error:null,
-    status:p.status==="rendering"?(p.outputs?.length?"qc":"idle"):p.status}));
+  state.skipEvaluation=saved.skipEvaluation===true;
+  state.skipQc=saved.skipQc===true;
+  const refreshMixedDirectBatch=Number(saved.v||1)<5&&state.skipEvaluation
+    &&saved.products.some(p=>p.outputs?.length)&&saved.products.some(p=>!p.outputs?.length);
+  state.products=saved.products.map((p,index)=>{
+    // v4 changes direct rendering from "every product uses Model 01" to index-to-index mapping.
+    // Errors on products after the first came from a different model and are stale.
+    const oldDirectMapping=Number(saved.v||1)<4&&state.skipEvaluation&&index>0&&!p.outputs?.length;
+    const obsoleteGate=refreshMixedDirectBatch||oldDirectMapping||["sensitive_apparel_input","evaluation_refresh_required","adult_confirmation_required"].includes(p.errorCode);
+    return {...p,error:obsoleteGate?null:p.error||null,errorCode:obsoleteGate?null:p.errorCode||null,
+      retryable:obsoleteGate?true:p.retryable!==false,
+      evaluationSkipped:p.evaluationSkipped===true,
+      outputs:refreshMixedDirectBatch?[]:p.outputs||[],selectedOutput:refreshMixedDirectBatch?0:p.selectedOutput||0,
+      lastQc:refreshMixedDirectBatch?null:p.lastQc||null,
+      status:refreshMixedDirectBatch?"idle":p.status==="rendering"?(p.outputs?.length?(state.skipQc?"done":"qc"):"idle"):p.status};
+  });
   state.active=saved.active||state.products[0]?.id||null;
   state.step=clamp(saved.step||1,1,5);
+  if(state.skipEvaluation&&state.step===3) state.step=2;
+  if(state.skipQc&&state.step===5) state.step=4;
   render();
   const mins=Math.round((Date.now()-(saved.savedAt||Date.now()))/60000);
   notify(`Đã khôi phục lượt làm dở${mins>0?` từ ${mins} phút trước`:""}.`);
@@ -891,6 +792,7 @@ function resetBatch(){
   if(!state.products.length) return;
   const n=state.products.length;
   if(!confirm(`Xoá ${n} sản phẩm cùng toàn bộ ảnh đã tạo trong lượt này?\n\nẢnh người mẫu được giữ lại. Ảnh đã lưu trên đĩa không bị xoá.`)) return;
+  state.products.forEach(p=>p.files.forEach(releaseFile));
   state.products=[]; state.active=null; state.step=1; seq=0;
   idbTx("readwrite",s=>s.delete(DB_KEY)).catch(()=>{});
   notify("Đã bắt đầu lượt mới. Bộ ảnh người mẫu vẫn giữ nguyên.");
@@ -899,19 +801,30 @@ function resetBatch(){
 
 /* ---------------------------------- API --------------------------------- */
 async function api(path,payload){
-  const res=await fetch(path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+  let res;
+  try{
+    res=await fetch(path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});
+  }catch(cause){
+    const error=new Error("Mất kết nối tới Studio Flow trong lúc xử lý. Kiểm tra server rồi thử lại.");
+    error.code="network_error"; error.retryable=true; error.cause=cause; throw error;
+  }
   const data=await res.json().catch(()=>({}));
-  if(!res.ok) throw new Error(data.error||`Máy chủ trả lỗi ${res.status}.`);
+  if(!res.ok){
+    const error=new Error(data.error||`Máy chủ trả lỗi ${res.status}.`);
+    error.code=data.code||null;
+    error.retryable=typeof data.retryable==="boolean"?data.retryable:(res.status===429||res.status>=500);
+    throw error;
+  }
   return data;
 }
 
 async function runAnalysis(targets){
   if(state.analyzing||state.batchBusy) return;
-  if(!state.apiReady){ notice("Chưa kết nối được dịch vụ AI",connFix()); return; }
+  if(!state.apiReady){ notice("Chưa kết nối được dịch vụ",connFix()); return; }
   const list=(targets&&targets.length?targets:state.products).filter(Boolean);
   if(!list.length) return;
   state.analyzing=true; notice(""); state.step=3; render();
-  announce(`Bắt đầu chấm ${list.length} sản phẩm.`);
+  announce(`Bắt đầu đánh giá ${list.length} sản phẩm.`);
   for(const p of list){
     state.job=p.id; state.active=p.id; render();
     try{
@@ -920,28 +833,38 @@ async function runAnalysis(targets){
       const data=await api("/api/evaluate",{productImages,modelImages});
       p.candidates=data.candidates||[];
       const best=p.candidates.find(c=>c.index===data.recommended_index)||p.candidates[0];
-      if(!best) throw new Error("AI không trả kết quả đánh giá.");
+      if(!best) throw new Error("Không nhận được kết quả đánh giá.");
       p.selectedModel=best.index; p.evaluation=best.evaluation; p.aiPick=best.index;
+      p.evaluationSkipped=false;
+      clearProductError(p);
     }catch(err){
-      state.analyzing=false; state.job=""; notice(`Không chấm được ${p.name}`,err.message); render(); return;
+      state.analyzing=false; state.job=""; notice(`Không đánh giá được ${p.name}`,err.message); render(); return;
     }
   }
-  state.analyzing=false; state.job=""; render(); notify("Đã chấm xong toàn bộ sản phẩm.");
+  state.analyzing=false; state.job=""; render(); notify("Đã đánh giá xong toàn bộ sản phẩm.");
 }
 
 async function generateOne(p,isRerender){
-  const mi=p.selectedModel??0, mf=state.models[mi]||state.models[0];
-  if(!mf) throw new Error("Chưa có ảnh người mẫu.");
+  const skipEvaluation=state.skipEvaluation||p.evaluationSkipped===true;
+  const mi=mappedModelIndex(p);
+  if(skipEvaluation){ p.evaluationSkipped=true; p.selectedModel=mi; }
+  const mf=state.models[mi];
+  if(!mf) throw new Error(`Thiếu Mẫu ${pad2(mi+1)} để ghép với sản phẩm này.`);
   const attempt=p.outputs.length+1;
   const [modelImage,productImages]=await Promise.all([asDataUrl(mf),Promise.all(p.files.map(asDataUrl))]);
   const reasons=isRerender?((p.lastQc&&(p.lastQc.rerender_reasons||p.lastQc.critical_failure_reasons))||[]):[];
-  const out=await api("/api/render",{modelImage,productImages,evaluation:p.evaluation,
-    manualOverride:!(p.evaluation?.compatibility?.decision==="AUTO_RENDER"),
-    productId:p.name,quality:"medium",size:"1024x1536",attempt,rerenderReasons:reasons});
-  p.outputs.push({image:out.image,filename:out.filename,savedPath:out.savedPath,attempt,qc:null});
-  p.selectedOutput=p.outputs.length-1; p.status="qc"; p.error=null; render();
+  // What the last QC judged correct travels with the retry so it does not get undone.
+  const keep=isRerender?((p.lastQc&&p.lastQc.strengths)||[]):[];
+  const out=await api("/api/render",{modelImage,productImages,evaluation:skipEvaluation?null:p.evaluation,
+    skipEvaluation,manualOverride:skipEvaluation||!(p.evaluation?.compatibility?.decision==="AUTO_RENDER"),
+    productId:p.name,quality:"medium",size:"1024x1536",
+    attempt,rerenderReasons:reasons,rerenderKeep:keep});
+  p.outputs.push({image:out.imageUrl||out.image,filename:out.filename,savedPath:out.savedPath,qc:null,modelIndex:mi,
+    qcSkipped:state.skipQc,evaluationSkipped:skipEvaluation});
+  p.selectedOutput=p.outputs.length-1; p.status=state.skipQc?"done":"qc"; p.lastQc=null; clearProductError(p); render();
+  if(state.skipQc) return;
   try{
-    const qc=await api("/api/qc",{modelImage,productImages,generatedImage:out.image});
+    const qc=await api("/api/qc",{modelImage,productImages,generatedFilename:out.filename});
     p.lastQc=qc; p.outputs[p.selectedOutput].qc=qc;
   }catch(err){ const fb={error:err.message,decision:"MANUAL"}; p.lastQc=fb; p.outputs[p.selectedOutput].qc=fb; }
   render();
@@ -949,21 +872,25 @@ async function generateOne(p,isRerender){
 
 async function runBatch(){
   if(state.batchBusy||state.analyzing) return;
-  if(!state.apiReady){ notice("Chưa kết nối được dịch vụ AI",connFix()); return; }
-  const pend=state.products.filter(p=>!p.outputs.length&&!p.error);
-  if(!pend.length){ go(5); return; }
+  if(!state.apiReady){ notice("Chưa kết nối được dịch vụ",connFix()); return; }
+  const missingModels=missingMappedModels();
+  if(missingModels){ notice("Chưa đủ ảnh mẫu",`Cần thêm ${missingModels} ảnh để ghép 1–1 với sản phẩm.`); return; }
+  const pend=renderQueue();
+  if(!pend.length){ if(!state.skipQc) go(5); return; }
   state.batchBusy=true; notice(""); state.step=4; render();
+  let created=0;
   for(const p of pend){
+    if(p.error) clearProductError(p);
     state.active=p.id; p.status="rendering"; render();
-    try{ await generateOne(p,false); }
-    catch(err){ p.status="idle"; p.error=err.message; render(); }   // one failure never discards earlier work
+    try{ await generateOne(p,false); created+=1; }
+    catch(err){ p.status="idle"; setProductError(p,err); render(); }   // one failure never discards earlier work
   }
   state.batchBusy=false;
   const bad=state.products.filter(p=>p.error);
   render();
-  if(bad.length) notice(`${bad.length} sản phẩm chưa tạo được`,bad.map(p=>`${p.name}: ${p.error}`).join(" · "));
-  notify(`Đã tạo xong ${state.products.filter(p=>p.outputs.length).length} sản phẩm.`);
-  if(!bad.length) go(5);
+  if(bad.length) notice(`${bad.length} sản phẩm chưa tạo được`,"Xem chi tiết tại bước Tạo ảnh.");
+  notify(created?`Đã tạo ${created} sản phẩm.`:"Chưa tạo được sản phẩm nào.");
+  if(!bad.length&&!state.skipQc) go(5);
 }
 
 async function regenerate(p){
@@ -972,24 +899,38 @@ async function regenerate(p){
   state.batchBusy=true; p.status="rendering"; render();
   announce(`Đang tạo lại ${p.name}, bản ${p.outputs.length+1} trên ${MAX_VERSIONS}.`);
   try{ await generateOne(p,true); notify(`Đã tạo bản V${p.outputs.length} cho ${p.name}.`); }
-  catch(err){ p.error=err.message; notice(`Không tạo lại được ${p.name}`,err.message); }
-  finally{ state.batchBusy=false; if(p.status==="rendering") p.status=p.outputs.length?"qc":"idle"; render(); }
+  catch(err){ setProductError(p,err); notice(`Không tạo lại được ${p.name}`,err.message); }
+  finally{ state.batchBusy=false; if(p.status==="rendering") p.status=p.outputs.length?(state.skipQc?"done":"qc"):"idle"; render(); }
 }
 
+function downloadOutput(out,fallbackName){
+  if(!out) return;
+  const a=document.createElement("a"); a.href=out.image; a.download=out.filename||`${fallbackName}.png`;
+  document.body.appendChild(a); a.click(); a.remove();
+}
 function saveOne(p,approve){
   const out=p.outputs[p.selectedOutput]; if(!out) return;
-  const a=document.createElement("a"); a.href=out.image; a.download=out.filename||`${p.name}.png`;
-  document.body.appendChild(a); a.click(); a.remove();
-  if(approve){ p.status="approved"; notify(`Đã duyệt ${p.name}.`); }
+  if(!approve){ downloadOutput(out,p.name); return; }
+  p.status="approved";
+  const ready=state.products.filter(item=>item.outputs.length);
+  const index=ready.findIndex(item=>item.id===p.id);
+  const ordered=index<0?ready:[...ready.slice(index+1),...ready.slice(0,index)];
+  const next=ordered.find(item=>item.status!=="approved");
+  if(next) state.active=next.id;
+  notify(next?`Đã duyệt ${p.name}. Chuyển sang ảnh tiếp theo.`:`Đã duyệt ${p.name}.`);
   render();
 }
-function downloadApproved(){
-  const list=state.products.filter(p=>p.status==="approved"&&p.outputs[p.selectedOutput]);
+function downloadProducts(list,label){
   if(!list.length) return;
   list.forEach((p,i)=>setTimeout(()=>{ const out=p.outputs[p.selectedOutput];
-    const a=document.createElement("a"); a.href=out.image; a.download=out.filename||`${p.name}.png`;
-    document.body.appendChild(a); a.click(); a.remove(); },i*350));
-  notify(`Đang tải ${list.length} ảnh đã duyệt.`);
+    downloadOutput(out,p.name); },i*350));
+  notify(`Đang tải ${list.length} ${label}.`);
+}
+function downloadAllOutputs(){
+  downloadProducts(state.products.filter(p=>p.outputs[p.selectedOutput]),"ảnh đã tạo");
+}
+function downloadApproved(){
+  downloadProducts(state.products.filter(p=>p.status==="approved"&&p.outputs[p.selectedOutput]),"ảnh đã duyệt");
 }
 
 /* -------------------------------- events -------------------------------- */
@@ -998,17 +939,36 @@ document.addEventListener("click",async e=>{
   const act=el.dataset.act, p=el.dataset.id?byId(el.dataset.id):current();
   if(act==="reset") return resetBatch();
   if(act==="step") return go(Number(el.dataset.n));
+  if(act==="toggle-skip-eval"){
+    state.skipEvaluation=!state.skipEvaluation;
+    state.products.forEach(prod=>stale(prod,true));
+    if(state.skipEvaluation&&state.step===3) state.step=2;
+    return render();
+  }
+  if(act==="toggle-skip-qc"){
+    state.skipQc=!state.skipQc;
+    if(state.skipQc&&state.step===5) state.step=4;
+    state.products.forEach(prod=>{
+      if(!prod.outputs.length||prod.status==="approved") return;
+      if(state.skipQc&&prod.status==="qc") prod.status="done";
+      if(!state.skipQc&&prod.status==="done") prod.status="qc";
+    });
+    return render();
+  }
   if(act==="pick"){ state.active=el.dataset.id; return render(); }
   if(act==="pick-product"){ viewTarget=null; return $("#fProduct").click(); }
   if(act==="add-view"){ viewTarget=el.dataset.id; return $("#fView").click(); }
   if(act==="replace"){ viewTarget="main:"+el.dataset.id; return $("#fView").click(); }
   if(act==="pick-model") return $("#fModel").click();
   if(act==="rm-product"){ if(!p) return;
+    const removedIndex=state.products.findIndex(item=>item.id===p.id);
+    p.files.forEach(releaseFile);
     state.products=state.products.filter(x=>x.id!==p.id);
+    if(state.skipEvaluation) state.products.slice(Math.max(0,removedIndex)).forEach(item=>stale(item,true));
     if(state.active===p.id) state.active=state.products[0]?.id||null;
     notify(`Đã xoá ${p.name}.`); return render(); }
-  if(act==="rm-view"){ if(!p) return; p.files.splice(Number(el.dataset.i),1); stale(p); return render(); }
-  if(act==="rm-model"){ state.models.splice(Number(el.dataset.i),1); state.products.forEach(stale); return render(); }
+  if(act==="rm-view"){ if(!p) return; const [removed]=p.files.splice(Number(el.dataset.i),1); releaseFile(removed); stale(p,true); return render(); }
+  if(act==="rm-model"){ const [removed]=state.models.splice(Number(el.dataset.i),1); releaseFile(removed); state.products.forEach(p=>stale(p,true)); return render(); }
   if(act==="zoom"){ $("#lightImg").src=el.dataset.src; $("#lightTitle").textContent=el.dataset.title||"Xem ảnh";
     return $("#light").showModal(); }
   if(act==="use-model"){
@@ -1017,12 +977,12 @@ document.addEventListener("click",async e=>{
     const c=(p.candidates||[]).find(x=>x.index===idx);
     if(!c) return;
     // Scores are per model×product pair, so swap the evaluation with the model.
-    p.selectedModel=idx; p.evaluation=c.evaluation;
-    notify(idx===p.aiPick?`Đang dùng mẫu ${pad2(idx+1)} — ảnh AI đề xuất.`:`Đã đổi sang mẫu ${pad2(idx+1)} theo lựa chọn của anh.`);
+    p.selectedModel=idx; p.evaluation=c.evaluation; clearProductError(p);
+    notify(idx===p.aiPick?`Đang dùng Mẫu ${pad2(idx+1)}.`:`Đã chọn Mẫu ${pad2(idx+1)}.`);
     return render();
   }
   if(act==="recheck"){ if(p){ stale(p); render(); return runAnalysis([p]); } return; }
-  if(act==="retry"){ if(p){ p.error=null; render(); return regenerate(p); } return; }
+  if(act==="retry"){ if(p){ if(p.retryable===false) return toast("Hãy đổi ảnh đầu vào trước khi thử lại."); clearProductError(p); render(); return regenerate(p); } return; }
   if(act==="version"){ if(p){ p.selectedOutput=Number(el.dataset.i);
     p.lastQc=p.outputs[p.selectedOutput]?.qc||p.lastQc; return render(); } return; }
   if(act==="approve"){ if(p) return saveOne(p,true); return; }
@@ -1030,12 +990,18 @@ document.addEventListener("click",async e=>{
   if(act==="regen"){ if(p) return regenerate(p); return; }
   if(act==="copy"){ const out=p?.outputs[p.selectedOutput]; if(!out?.savedPath) return;
     try{ await navigator.clipboard.writeText(out.savedPath); notify("Đã chép đường dẫn."); }
-    catch{ toast(out.savedPath); } return; }
+    catch{ toast(out.savedPath); } }
 });
 
 document.addEventListener("keydown",e=>{
   if(/input|textarea/i.test(e.target.tagName)) return;
   if($("#light").open) return;
+  if(e.target.closest?.("#compare")&&(e.key==="ArrowRight"||e.key==="ArrowLeft")){
+    e.preventDefault();
+    state.split=clamp(state.split+(e.key==="ArrowRight"?2:-2),0,100);
+    applySplit();
+    return;
+  }
   if(e.key==="ArrowRight") return go(state.step+1);
   if(e.key==="ArrowLeft") return go(state.step-1);
   if(/^[1-5]$/.test(e.key)) return go(Number(e.key));
@@ -1045,11 +1011,14 @@ document.addEventListener("keydown",e=>{
 function setSplit(e){
   const box=$("#compare"); if(!box) return;
   const r=box.getBoundingClientRect();
-  state.split=clamp(((e.clientX-r.left)/r.width)*100,3,97);
-  $("#layerSrc").style.setProperty("--clip",(100-state.split)+"%");
-  $("#hLine").style.left=state.split+"%";
-  $("#hKnob").style.left=state.split+"%";
-  const lbl=$(".qc-bar .mono"); if(lbl) lbl.textContent=`kéo thanh dọc để so sánh · ${Math.round(state.split)}%`;
+  state.split=clamp(((e.clientX-r.left)/r.width)*100,0,100);
+  applySplit();
+}
+function applySplit(){
+  $("#layerSrc")?.style.setProperty("--clip",(100-state.split)+"%");
+  if($("#hLine")) $("#hLine").style.left=state.split+"%";
+  if($("#splitValue")) $("#splitValue").textContent=`${Math.round(state.split)}%`;
+  $("#compare")?.setAttribute("aria-valuenow",String(Math.round(state.split)));
 }
 document.addEventListener("pointerdown",e=>{
   const box=e.target.closest("#compare"); if(!box) return;
@@ -1065,7 +1034,7 @@ $("#fView").addEventListener("change",async e=>{
   if(String(viewTarget).startsWith("main:")){
     const p=byId(viewTarget.slice(5));
     if(p){ const {ok,bad}=await screenFiles(files);
-      if(ok[0]){ p.files[0]=ok[0]; stale(p); notify("Đã thay ảnh chính."); }
+      if(ok[0]){ releaseFile(p.files[0]); p.files[0]=ok[0]; stale(p,true); notify("Đã thay ảnh chính."); }
       notice(bad.length?"Ảnh không hợp lệ":"",bad.join(" ")); render(); }
   }else{ const p=byId(viewTarget); if(p) await addViews(p,files); }
   viewTarget=null;
@@ -1089,9 +1058,9 @@ const connFix=()=>onCodex()
 function renderConn(){
   const box=$("#conn"), t=$("#connText");
   box.className=`conn ${state.apiReady?"is-ok":"is-error"}`;
-  t.textContent=state.apiReady?(onCodex()?"gói ChatGPT · sẵn sàng":`${state.apiModel} · tính phí API`):state.connMessage;
+  t.textContent=state.apiReady?"Đã kết nối":state.connMessage;
   box.title=state.apiReady
-    ?(onCodex()?"Chạy trong hạn mức gói ChatGPT. Không tốn API credit.":"Gọi OpenAI API và tính phí theo lượt.")
+    ?(onCodex()?"Dùng hạn mức ChatGPT; không trừ số dư API.":"Dùng OpenAI API và tính phí theo lượt.")
     :`${state.connMessage} ${connFix()}`;
 }
 async function checkServer(){
@@ -1100,59 +1069,18 @@ async function checkServer(){
     const res=await fetch("/api/status",{cache:"no-store"});
     const d=await res.json();
     state.apiReady=Boolean(d.ready); state.backend=d.backend||"api";
-    state.apiModel=d.model||"gpt-image-2"; state.allowManualOverride=d.allowManualOverride!==false;
-    state.connMessage=state.apiReady?"":(onCodex()?"Codex chưa sẵn sàng":"chưa có API key trên máy chủ");
+    state.apiModel=d.model||"gpt-image-2";
+    state.connMessage=state.apiReady?"":(onCodex()?"dịch vụ chưa sẵn sàng":"chưa có API key trên máy chủ");
   }catch{ state.apiReady=false; state.connMessage="chưa kết nối được máy chủ"; }
   renderConn();
   if(!state.analyzing&&!state.batchBusy){ renderFoot();
-    if(was!==state.apiReady) announce(state.apiReady?"Đã kết nối dịch vụ AI.":`Mất kết nối: ${state.connMessage}`); }
+    if(was!==state.apiReady) announce(state.apiReady?"Đã kết nối dịch vụ.":`Mất kết nối: ${state.connMessage}`); }
 }
 
 /* ---------------------------------- boot -------------------------------- */
 renderConn(); render(); checkServer(); setInterval(checkServer,20000);
 restore().catch(()=>{});
 
-/* Design harness: `#demo3` etc. seeds fake data. Never runs for a normal visit. */
-if(location.hash.startsWith("#demo")){(async()=>{
-  const mk=(w,h,c,label)=>{ const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
-    const x=cv.getContext("2d"); x.fillStyle=c; x.fillRect(0,0,w,h);
-    x.fillStyle="rgba(255,255,255,.72)"; x.font="600 34px sans-serif"; x.fillText(label,24,58);
-    const b=atob(cv.toDataURL("image/png").split(",")[1]); const u=new Uint8Array(b.length);
-    for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i);
-    return new File([u],label+".png",{type:"image/png"}); };
-  const url=(w,h,c,l)=>{ const cv=document.createElement("canvas"); cv.width=w; cv.height=h;
-    const x=cv.getContext("2d"); x.fillStyle=c; x.fillRect(0,0,w,h);
-    x.fillStyle="rgba(255,255,255,.8)"; x.font="600 40px sans-serif"; x.fillText(l,28,70); return cv.toDataURL("image/png"); };
-  [["Đầm lụa xếp chéo","#8a7f70"],["Áo khoác dạ cổ ve","#6f7a6e"],["Chân váy xếp ly","#5c5c57"]].forEach(([n,c])=>{
-    seq+=1; state.products.push({id:`p${seq}`,name:n,files:[mk(900,1200,c,n)],evaluation:null,candidates:[],
-      selectedModel:null,outputs:[],selectedOutput:0,status:"idle",error:null,lastQc:null}); });
-  state.products[0].files.push(mk(900,1200,"#7a6f60","góc sau"),mk(900,1200,"#6b6050","góc nghiêng"));
-  state.models.push(mk(900,1200,"#9c9b95","mẫu 01"),mk(900,1200,"#84847e","mẫu 02"),mk(900,1200,"#b0afa8","mẫu 03"));
-  const ev=(s,cap)=>({input_quality:{model:{score:97},product:{score:s>=90?94:86},decision:"PASS"},
-    compatibility:{final_score:s,decision:s>=82?"AUTO_RENDER":"REJECT",score_cap_reason:cap},
-    risks:s<80?[{factor:"sleeve",reason:"Vùng tay áo bị che một phần nên chi tiết cổ tay khó dựng lại chính xác."}]:[],
-    recommended_reference_requirements:["Bổ sung ảnh mặt sau để dựng đúng khoá kéo."],product_spec:{},model_spec:{}});
-  const seedCands=(p,scores,pick)=>{ p.candidates=scores.map((s,i)=>({index:i,evaluation:ev(s)}));
-    p.aiPick=pick; p.selectedModel=pick; p.evaluation=p.candidates[pick].evaluation; };
-  seedCands(state.products[0],[93,81,88],0);
-  seedCands(state.products[1],[74,88,69],1);
-  seedCands(state.products[2],[66,61,58],0);
-  state.products[2].evaluation=ev(66,"Thiếu góc nhìn quan trọng nên điểm bị giới hạn.");
-  const oi=url(1024,1536,"#8a7f70","AI RESULT");
-  state.products[0].outputs=[{image:oi,filename:"dam-lua-v1.png",savedPath:"C:\\out\\v1.png",attempt:1,qc:null},
-                             {image:oi,filename:"dam-lua-v2.png",savedPath:"C:\\out\\v2.png",attempt:2,qc:null}];
-  state.products[0].selectedOutput=1; state.products[0].status="qc";
-  state.products[1].outputs=[{image:oi,filename:"ao-khoac-v1.png",savedPath:"C:\\out\\b1.png",attempt:1,qc:null}];
-  state.products[1].status="approved";
-  state.products[2].error="Codex không tạo được output.png.";
-  const qc={product_fidelity_score:96,silhouette:24,construction_detail:23,length_proportion:14,
-    color_material:15,model_pose_preservation:10,scene_camera_preservation:10,critical_failure:false,
-    critical_failure_reasons:[],rerender_reasons:["Cổ áo hơi lệch so với ảnh gốc"],decision:"PASS"};
-  state.products[0].lastQc=qc; state.products[0].outputs[1].qc=qc;
-  state.active=state.products[0].id;
-  state.step=Number(location.hash.replace("#demo",""))||1;
-  render();
-})();}
 </script>
 </body>
 </html>
