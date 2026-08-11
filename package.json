@@ -7,9 +7,17 @@
   "main": "server.mjs",
   "scripts": {
     "start": "node server.mjs",
-    "start:api": "node --env-file-if-exists=.env server.mjs"
+    "start:api": "node --env-file-if-exists=.env server.mjs",
+    "team:start": "node --env-file-if-exists=team/.env team/central-server.mjs",
+    "team:helper": "node --env-file-if-exists=team/.env team/helper.mjs",
+    "team:public": "node team/public-tunnel.mjs",
+    "team:cloudflare": "node team/public-cloudflare.mjs",
+    "team:test": "node --test team/tests/*.test.mjs"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "sharp": "^0.35.3"
   }
 }

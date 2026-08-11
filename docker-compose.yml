@@ -1,0 +1,16 @@
+services:
+  studio-flow-team:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "4180:4180"
+    volumes:
+      - studio_flow_team_data:/app/team-data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4180/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  studio_flow_team_data:

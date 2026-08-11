@@ -27,4 +27,8 @@ Desktop.ini
 *.clixml
 .env
 .env.*
+team-data/
+team/.env
+*.sqlite
+*.sqlite-*
 PASTE_OPENAI_KEY_HERE.txt
