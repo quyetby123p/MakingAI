@@ -4,7 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
-import { centralPort, dataRoot, jobsRoot, maxBodyBytes, maxModels, maxProductViews, maxProducts, safeName, ensureDirectories } from "./config.mjs";
+import { centralPort, dataRoot, jobsRoot, maxBodyBytes, maxModels, maxProductViews, maxProducts, safeName, ensureDirectories, sharedHostHelperUserIds } from "./config.mjs";
 import { JsonStore } from "./store.mjs";
 import { fileToDataUrl, outputUrl, parseDataUrl, saveDataUrl } from "./files.mjs";
 import { driveStatus, publishImage } from "./drive.mjs";
@@ -24,6 +24,18 @@ function html(res, body) {
 }
 
 function previewUrlFor(url) { return `${url}?preview=1`; }
+
+function outputVersionMeta(jobId, productId, out, index) {
+  const version = Number(out?.version || index + 1);
+  const stamp = Date.parse(out?.createdAt || "") || index;
+  const base = outputUrl(jobId, productId);
+  const cache = encodeURIComponent(`${version}-${stamp}`);
+  return {
+    version,
+    outputUrl: `${base}?version=${version}&cache=${cache}`,
+    previewUrl: `${base}?preview=1&version=${version}&cache=${cache}`
+  };
+}
 
 async function sendImage(res, sourceFile, previewFile = null) {
   let file = sourceFile;
@@ -91,6 +103,34 @@ function helperFromRequest(req) {
   return match;
 }
 
+function isSharedHostHelperUser(userId) {
+  return sharedHostHelperUserIds.has(userId);
+}
+
+function helpersForUser(userId) {
+  const ownHelpers = store.listHelpers(userId);
+  if (!sharedHostHelperUserIds.size) return ownHelpers;
+  const seen = new Set(ownHelpers.map(helper => helper.id));
+  const sharedHelpers = [...sharedHostHelperUserIds]
+    .flatMap(hostUserId => store.listHelpers(hostUserId))
+    .filter(helper => helper.enabled !== false && !seen.has(helper.id))
+    .map(helper => ({ ...helper, sharedHost: true, label: helper.label || "Máy chủ gen ảnh" }));
+  return [...ownHelpers, ...sharedHelpers];
+}
+
+function pendingJobsForHelper(helperUserId) {
+  const jobs = isSharedHostHelperUser(helperUserId) ? store.listJobs() : store.listJobs(helperUserId);
+  return jobs
+    .filter(job => ["WAITING_FOR_HELPER", "QUEUED"].includes(job.status))
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
+function helperCanUpdateJob(job, helperUserId, requestHelperId) {
+  if (!job) return false;
+  if (job.ownerId === helperUserId) return true;
+  return isSharedHostHelperUser(helperUserId) && Boolean(requestHelperId) && job.helperId === requestHelperId;
+}
+
 function jobForUser(jobId, userId) {
   const job = store.getJob(jobId);
   if (!job || job.ownerId !== userId) throw Object.assign(new Error("Không tìm thấy job."), { status: 404, code: "job_not_found" });
@@ -117,23 +157,71 @@ function publicProject(project) {
   };
 }
 
+function isAdvisoryGateError(message) {
+  return String(message || "").includes("Input chưa vượt Input Gate");
+}
+
+function isCapacityError(message) {
+  return /selected model is at capacity|model .*capacity|try a different model|Model tạo ảnh của ChatGPT đang quá tải/i.test(String(message || ""));
+}
+
+function publicProductState(product) {
+  const hasOutput = Boolean((product.outputs || []).length);
+  const canRenderAfterEvaluation = Boolean(product.evaluation && !hasOutput);
+  if (canRenderAfterEvaluation && isAdvisoryGateError(product.error)) {
+    return { status: "EVALUATED", error: null, progressMessage: "Đã đánh giá; điểm là cảnh báo, vẫn có thể duyệt tạo ảnh." };
+  }
+  if (product.evaluation && isCapacityError(product.error)) {
+    return { status: "EVALUATED", error: null, progressMessage: "Model tạo ảnh đang quá tải. Bấm Duyệt tạo ảnh hoặc Tạo lại sau ít phút." };
+  }
+  return { status: product.status, error: product.error || null, progressMessage: product.progressMessage || null };
+}
+
+function publicJobStatus(job) {
+  if (job.status !== "FAILED") return job.status;
+  const products = job.products || [];
+  const hasAdvisoryGateProduct = products.some(product => product.evaluation && !(product.outputs || []).length && isAdvisoryGateError(product.error));
+  const hasCapacityProduct = products.some(product => product.evaluation && isCapacityError(product.error));
+  const recoverableErrorsOnly = !job.errors?.length || job.errors.every(error => isAdvisoryGateError(error.error) || isCapacityError(error.error));
+  return (hasAdvisoryGateProduct || hasCapacityProduct) && recoverableErrorsOnly ? "AWAITING_EVALUATION_APPROVAL" : job.status;
+}
+
 function publicJob(job) {
   return {
-    id: job.id, status: job.status, name: job.name, projectId: job.projectId || null, project: job.project || null, createdAt: job.createdAt, updatedAt: job.updatedAt,
-    retryRequests: job.retryRequests || [], errors: job.errors || [], drive: job.drive || null,
+    id: job.id, status: publicJobStatus(job), name: job.name, projectId: job.projectId || null, project: job.project || null, createdAt: job.createdAt, updatedAt: job.updatedAt,
+    retryRequests: job.retryRequests || [], errors: publicJobStatus(job) === "FAILED" ? job.errors || [] : (job.errors || []).filter(error => !isAdvisoryGateError(error.error) && !isCapacityError(error.error)), drive: job.drive || null,
     estimatedSeconds: job.estimatedSeconds || null, startedAt: job.startedAt || null, finishedAt: job.finishedAt || null,
-    products: (job.products || []).map(product => ({
-      id: product.id, name: product.name, status: product.status, progressMessage: product.progressMessage || null, error: product.error || null,
+    inputHistory: {
+      modelImages: (job.input?.modelImages || []).map((_, index) => ({
+        index,
+        name: job.input?.modelImageNames?.[index] || `Model ${index + 1}`,
+        url: `/api/jobs/${encodeURIComponent(job.id)}/references/model/${index}`,
+        previewUrl: previewUrlFor(`/api/jobs/${encodeURIComponent(job.id)}/references/model/${index}`)
+      }))
+    },
+    products: (job.products || []).map(product => {
+      const state = publicProductState(product);
+      const isRetrying = (job.retryRequests || []).includes(product.id);
+      return ({
+      id: product.id, name: product.name, status: state.status, progressMessage: state.progressMessage, error: state.error,
+      isRetrying, waitingVersion: isRetrying ? (product.outputs || []).length + 1 : null,
+      productReferenceUrl: product.inputFiles?.[0] ? `/api/jobs/${encodeURIComponent(job.id)}/references/product/${encodeURIComponent(product.id)}` : null,
+      productReferencePreviewUrl: product.inputFiles?.[0] ? previewUrlFor(`/api/jobs/${encodeURIComponent(job.id)}/references/product/${encodeURIComponent(product.id)}`) : null,
+      productReferences: (product.inputFiles || []).map((_, index) => ({
+        index,
+        name: product.inputNames?.[index] || (index === 0 ? product.name : `${product.name} - góc ${index + 1}`),
+        url: `/api/jobs/${encodeURIComponent(job.id)}/references/product/${encodeURIComponent(product.id)}/${index}`,
+        previewUrl: previewUrlFor(`/api/jobs/${encodeURIComponent(job.id)}/references/product/${encodeURIComponent(product.id)}/${index}`)
+      })),
       selectedModel: product.selectedModel ?? null,
       modelReferenceUrl: product.selectedModel != null && job.input?.modelImages?.[product.selectedModel]
         ? `/api/jobs/${encodeURIComponent(job.id)}/references/model/${product.selectedModel}` : null,
       modelReferencePreviewUrl: product.selectedModel != null && job.input?.modelImages?.[product.selectedModel]
         ? previewUrlFor(`/api/jobs/${encodeURIComponent(job.id)}/references/model/${product.selectedModel}`) : null,
       evaluation: product.evaluation || null, outputs: (product.outputs || []).map((out, index) => ({
-        version: out.version || index + 1, qc: out.qc || null, selected: out.selected === true,
-        outputUrl: outputUrl(job.id, product.id), previewUrl: previewUrlFor(outputUrl(job.id, product.id)), drive: out.drive || null
+        ...outputVersionMeta(job.id, product.id, out, index), qc: out.qc || null, selected: out.selected === true, drive: out.drive || null
       }))
-    }))
+    })})
   };
 }
 
@@ -193,7 +281,7 @@ async function handle(req, res) {
     const sessionToken = store.createSession(user.id);
     store.audit("session.claimed", user.id, user.id);
     store.save();
-    return json(res, 200, { token: sessionToken, user: { id: user.id, name: user.name }, helpers: store.listHelpers(user.id) }, { "set-cookie": `studio_session=${encodeURIComponent(sessionToken)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(Number(process.env.STUDIO_SESSION_TTL_MS || 8 * 60 * 60 * 1000) / 1000)}` });
+    return json(res, 200, { token: sessionToken, user: { id: user.id, name: user.name }, helpers: helpersForUser(user.id) }, { "set-cookie": `studio_session=${encodeURIComponent(sessionToken)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(Number(process.env.STUDIO_SESSION_TTL_MS || 8 * 60 * 60 * 1000) / 1000)}` });
   }
 
   if (pathname.startsWith("/internal/")) {
@@ -201,18 +289,22 @@ async function handle(req, res) {
     if (req.method === "POST" && pathname === "/internal/helpers/poll") {
       const body = await readBody(req);
       const authenticated = body.authenticated === true;
-      store.touchHelper(body.helperId || helper.id, user.id, authenticated);
+      const requestHelperId = body.helperId || helper.id;
+      store.touchHelper(requestHelperId, user.id, authenticated);
       markOldHelpersOffline();
-      const pending = store.listJobs(user.id).filter(job => ["WAITING_FOR_HELPER", "QUEUED"].includes(job.status)).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))[0];
-      if (!pending) return json(res, 200, { job: null, helper: store.listHelpers(user.id).find(item => item.userId === user.id) });
-      store.updateJob(pending.id, { status: "RUNNING", helperId: body.helperId || helper.id, startedAt: new Date().toISOString() });
-      return json(res, 200, { job: jobPayloadForHelper(pending), helper: store.listHelpers(user.id).find(item => item.userId === user.id) });
+      const visibleHelper = helpersForUser(user.id).find(item => item.id === requestHelperId) || null;
+      if (!authenticated) return json(res, 200, { job: null, helper: visibleHelper });
+      const pending = pendingJobsForHelper(user.id)[0];
+      if (!pending) return json(res, 200, { job: null, helper: visibleHelper });
+      store.updateJob(pending.id, { status: "RUNNING", helperId: requestHelperId, helperUserId: user.id, startedAt: new Date().toISOString() });
+      return json(res, 200, { job: jobPayloadForHelper(pending), helper: visibleHelper });
     }
 
     if (req.method === "POST" && pathname === "/internal/helpers/progress") {
       const body = await readBody(req);
+      const requestHelperId = body.helperId || helper.id;
       const job = store.getJob(body.jobId);
-      if (!job || job.ownerId !== user.id) throw Object.assign(new Error("Job không thuộc helper này."), { status: 404, code: "job_not_found" });
+      if (!helperCanUpdateJob(job, user.id, requestHelperId)) throw Object.assign(new Error("Job không thuộc helper này."), { status: 404, code: "job_not_found" });
       const product = (job.products || []).find(item => item.id === body.productId);
       if (!product) throw Object.assign(new Error("Không tìm thấy sản phẩm trong job."), { status: 404, code: "product_not_found" });
       if (body.evaluation) product.evaluation = body.evaluation;
@@ -225,8 +317,9 @@ async function handle(req, res) {
 
     if (req.method === "POST" && pathname === "/internal/helpers/result") {
       const body = await readBody(req);
+      const requestHelperId = body.helperId || helper.id;
       const job = store.getJob(body.jobId);
-      if (!job || job.ownerId !== user.id) throw Object.assign(new Error("Job không thuộc helper này."), { status: 404, code: "job_not_found" });
+      if (!helperCanUpdateJob(job, user.id, requestHelperId)) throw Object.assign(new Error("Job không thuộc helper này."), { status: 404, code: "job_not_found" });
       const jobDir = path.join(job.jobDir || path.join(jobsRoot, safeName(job.id)), "outputs");
       fs.mkdirSync(jobDir, { recursive: true });
       const products = job.products || [];
@@ -235,7 +328,15 @@ async function handle(req, res) {
       for (const result of body.products || []) {
         const product = products.find(item => item.id === result.id);
         if (!product) continue;
-        if (result.error) { product.error = result.error; product.progressMessage = null; product.status = "FAILED"; errors.push({ productId: product.id, error: result.error }); continue; }
+        if (result.error) {
+          if (result.evaluation) product.evaluation = result.evaluation;
+          product.selectedModel = result.selectedModel ?? product.selectedModel;
+          product.error = result.error;
+          product.progressMessage = null;
+          product.status = "FAILED";
+          errors.push({ productId: product.id, error: result.error });
+          continue;
+        }
         product.error = null;
         product.progressMessage = null;
         product.status = evaluationOnly ? "EVALUATED" : "DONE";
@@ -256,12 +357,12 @@ async function handle(req, res) {
       const hasError = products.some(product => product.status === "FAILED");
       const nextStatus = body.status === "CANCELLED" ? "CANCELLED" : hasError ? "FAILED" : evaluationOnly ? "AWAITING_EVALUATION_APPROVAL" : "DONE";
       store.updateJob(job.id, { products, retryRequests: [], renderRequests: [], errors, status: nextStatus, finishedAt: evaluationOnly ? null : new Date().toISOString(), evaluationCompletedAt: evaluationOnly ? new Date().toISOString() : job.evaluationCompletedAt || null });
-      store.audit(evaluationOnly ? "job.evaluated" : "job.finished", user.id, job.id, { status: nextStatus, helperId: helper.id });
+      store.audit(evaluationOnly ? "job.evaluated" : "job.finished", job.ownerId, job.id, { status: nextStatus, helperId: requestHelperId, helperUserId: user.id });
       store.save();
       return json(res, 200, { ok: true, job: publicJob(store.getJob(job.id)) });
     }
 
-    if (req.method === "GET" && pathname === "/internal/helpers/status") return json(res, 200, { helper: store.listHelpers(user.id) });
+    if (req.method === "GET" && pathname === "/internal/helpers/status") return json(res, 200, { helper: helpersForUser(user.id) });
     return json(res, 404, { error: "Internal endpoint không tồn tại." });
   }
 
@@ -280,8 +381,8 @@ async function handle(req, res) {
   const user = userFromRequest(req, url);
   markOldHelpersOffline();
 
-  if (req.method === "GET" && pathname === "/api/me") return json(res, 200, { user: { id: user.id, name: user.name }, helpers: store.listHelpers(user.id), drive: driveStatus() });
-  if (req.method === "GET" && pathname === "/api/status") return json(res, 200, { ok: true, helpers: store.listHelpers(user.id), drive: driveStatus() });
+  if (req.method === "GET" && pathname === "/api/me") return json(res, 200, { user: { id: user.id, name: user.name }, helpers: helpersForUser(user.id), drive: driveStatus() });
+  if (req.method === "GET" && pathname === "/api/status") return json(res, 200, { ok: true, helpers: helpersForUser(user.id), drive: driveStatus(), sharedHostMode: sharedHostHelperUserIds.size > 0 });
   if (req.method === "GET" && pathname === "/api/projects") {
     ensureLegacyProjects(user.id);
     return json(res, 200, { projects: store.listProjects(user.id).map(publicProject) });
@@ -311,6 +412,13 @@ async function handle(req, res) {
     const project = store.projectForUser(projectMatch[1], user.id);
     if (!project) throw Object.assign(new Error("Không tìm thấy project."), { status: 404, code: "project_not_found" });
     if (req.method === "GET") return json(res, 200, { project: publicProject(project) });
+    if (req.method === "PATCH") {
+      const body = await readBody(req);
+      const name = String(body.name || "").trim().slice(0, 120);
+      if (!name) throw Object.assign(new Error("Cần nhập tên project."), { status: 400, code: "project_name_required" });
+      const updated = store.renameProject(project.id, user.id, name);
+      return json(res, 200, { project: publicProject(updated) });
+    }
     if (req.method === "DELETE") {
       for (const job of store.listJobs(user.id).filter(item => item.projectId === project.id)) {
         store.deleteJobFiles(job.id);
@@ -341,12 +449,14 @@ async function handle(req, res) {
     const jobId = `job_${safeName(projectName, "project")}_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`;
     const jobStorageKey = `${project.storageKey}/${safeName(jobId)}`;
     const inputModelFiles = body.modelImages.map((value, index) => saveDataUrl(jobStorageKey, "inputs", `model-${index + 1}`, value));
+    const inputModelNames = Array.isArray(body.modelNames) ? body.modelNames.map((value, index) => String(value || `Model ${index + 1}`).slice(0, 160)) : body.modelImages.map((_, index) => `Model ${index + 1}`);
     const products = body.products.map((item, index) => {
       const refs = Array.isArray(item.productImages) ? item.productImages : [];
       validateImages(refs, maxProductViews, `Ảnh sản phẩm ${index + 1}`);
-      return { id: `product_${index + 1}`, name: String(item.name || `Sản phẩm ${index + 1}`).slice(0, 100), inputFiles: refs.map((value, refIndex) => saveDataUrl(jobStorageKey, "inputs", `product-${index + 1}-view-${refIndex + 1}`, value)), status: "WAITING", evaluation: null, selectedModel: null, outputs: [], lastQc: null, error: null };
+      const inputNames = Array.isArray(item.productImageNames) ? item.productImageNames.map((value, refIndex) => String(value || `${item.name || `Sản phẩm ${index + 1}`} - góc ${refIndex + 1}`).slice(0, 160)) : refs.map((_, refIndex) => refIndex === 0 ? String(item.name || `Sản phẩm ${index + 1}`).slice(0, 160) : `${item.name || `Sản phẩm ${index + 1}`} - góc ${refIndex + 1}`);
+      return { id: `product_${index + 1}`, name: String(item.name || `Sản phẩm ${index + 1}`).slice(0, 100), inputFiles: refs.map((value, refIndex) => saveDataUrl(jobStorageKey, "inputs", `product-${index + 1}-view-${refIndex + 1}`, value)), inputNames, status: "WAITING", evaluation: null, selectedModel: null, outputs: [], lastQc: null, error: null };
     });
-    const job = store.createJob({ id: jobId, ownerId: user.id, name: jobName, projectId: project.id, project: { id: project.id, name: project.name, storageKey: project.storageKey }, status: "WAITING_FOR_HELPER", helperId: null, input: { modelImages: inputModelFiles }, products, retryRequests: [], errors: [], drive: null, estimatedSeconds: estimateJobSeconds(body.products.length, body.modelImages.length), jobDir: path.join(jobsRoot, project.storageKey, safeName(jobId)) });
+    const job = store.createJob({ id: jobId, ownerId: user.id, name: jobName, projectId: project.id, project: { id: project.id, name: project.name, storageKey: project.storageKey }, status: "WAITING_FOR_HELPER", helperId: null, input: { modelImages: inputModelFiles, modelImageNames: inputModelNames }, products, retryRequests: [], errors: [], drive: null, estimatedSeconds: estimateJobSeconds(body.products.length, body.modelImages.length), jobDir: path.join(jobsRoot, project.storageKey, safeName(jobId)) });
     return json(res, 201, { job: publicJob(job) });
   }
 
@@ -424,9 +534,13 @@ async function handle(req, res) {
   if (req.method === "GET" && outputMatch) {
     const job = jobForUser(outputMatch[1], user.id);
     const product = job.products.find(item => item.id === outputMatch[2]);
-    const output = [...(product?.outputs || [])].reverse().find(item => item.selected !== false) || product?.outputs?.at(-1);
+    const requestedVersion = Number(url.searchParams.get("version") || String(url.searchParams.get("v") || "").split("-")[0]);
+    const output = Number.isFinite(requestedVersion) && requestedVersion > 0
+      ? (product?.outputs || []).find(item => Number(item.version) === requestedVersion)
+      : [...(product?.outputs || [])].reverse().find(item => item.selected !== false) || product?.outputs?.at(-1);
     if (!output?.path || !fs.existsSync(output.path)) return json(res, 404, { error: "Chưa có ảnh kết quả." });
-    const preview = url.searchParams.get("preview") === "1" ? path.join(job.jobDir || path.join(jobsRoot, safeName(job.id)), "previews", `${safeName(product.id)}-output.jpg`) : null;
+    const previewVersion = Number(output.version || requestedVersion || 1);
+    const preview = url.searchParams.get("preview") === "1" ? path.join(job.jobDir || path.join(jobsRoot, safeName(job.id)), "previews", `${safeName(product.id)}-output-v${previewVersion}.jpg`) : null;
     return sendImage(res, output.path, preview);
   }
 
@@ -436,6 +550,17 @@ async function handle(req, res) {
     const file = job.input?.modelImages?.[Number(modelReferenceMatch[2])];
     if (!file || !fs.existsSync(file)) return json(res, 404, { error: "Không tìm thấy ảnh model gốc." });
     const preview = url.searchParams.get("preview") === "1" ? path.join(job.jobDir || path.join(jobsRoot, safeName(job.id)), "previews", `model-${modelReferenceMatch[2]}.jpg`) : null;
+    return sendImage(res, file, preview);
+  }
+
+  const productReferenceMatch = pathname.match(/^\/api\/jobs\/([^/]+)\/references\/product\/([^/]+)(?:\/(\d+))?$/);
+  if (req.method === "GET" && productReferenceMatch) {
+    const job = jobForUser(productReferenceMatch[1], user.id);
+    const product = job.products.find(item => item.id === decodeURIComponent(productReferenceMatch[2]));
+    const index = Number(productReferenceMatch[3] || 0);
+    const file = product?.inputFiles?.[index];
+    if (!file || !fs.existsSync(file)) return json(res, 404, { error: "Không tìm thấy ảnh sản phẩm gốc." });
+    const preview = url.searchParams.get("preview") === "1" ? path.join(job.jobDir || path.join(jobsRoot, safeName(job.id)), "previews", `${safeName(product.id)}-product-${index}.jpg`) : null;
     return sendImage(res, file, preview);
   }
 

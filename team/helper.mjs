@@ -10,6 +10,8 @@ import { isRetryableError, retryInstructions, selectCandidate } from "./workflow
 const token = process.env.STUDIO_HELPER_TOKEN || "demo-helper";
 const localPort = Number(process.env.STUDIO_LOCAL_ENGINE_PORT || 4173 + Math.floor(Math.random() * 100));
 const localOrigin = `http://127.0.0.1:${localPort}`;
+const helperConcurrency = Math.max(1, Math.min(5, Number(process.env.STUDIO_HELPER_CONCURRENCY || 1)));
+const activeJobs = new Map();
 let engine = null;
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -70,13 +72,13 @@ async function pollCentral(authenticated) {
 
 async function sendResult(jobId, body) {
   return requestJson(`${centralOrigin}/internal/helpers/result`, {
-    method: "POST", headers: { "x-helper-token": token }, body: JSON.stringify({ jobId, ...body })
+    method: "POST", headers: { "x-helper-token": token }, body: JSON.stringify({ jobId, helperId, ...body })
   });
 }
 
 async function sendProgress(jobId, body) {
   return requestJson(`${centralOrigin}/internal/helpers/progress`, {
-    method: "POST", headers: { "x-helper-token": token }, body: JSON.stringify({ jobId, ...body })
+    method: "POST", headers: { "x-helper-token": token }, body: JSON.stringify({ jobId, helperId, ...body })
   });
 }
 
@@ -90,7 +92,7 @@ async function evaluateProduct(job, product) {
     if (!candidate) throw new Error("Evaluator không trả về ứng viên model.");
     evaluation = candidate.evaluation;
     selectedModel = candidate.index;
-    await sendProgress(job.id, { productId: product.id, status: "EVALUATED", jobStatus: "EVALUATED", evaluation, selectedModel, message: "Đã đánh giá xong; chờ anh duyệt tạo ảnh." });
+    await sendProgress(job.id, { productId: product.id, status: "EVALUATED", jobStatus: "EVALUATED", evaluation, selectedModel, message: "Đã đánh giá xong; chờ duyệt tạo ảnh." });
     await sleep(Number(process.env.STUDIO_EVALUATION_PREVIEW_MS || 1200));
   }
   return { id: product.id, name: product.name, evaluation, selectedModel };
@@ -105,14 +107,13 @@ async function renderProduct(job, product) {
   await sendProgress(job.id, { productId: product.id, status: "RENDERING", jobStatus: "RENDERING", evaluation, selectedModel, message: "Đang tạo ảnh bằng model đã chọn..." });
   const retry = retryInstructions(product);
   const rendered = await engineJson("/api/render", {
-    modelImage, productImages: product.productImages, evaluation, skipEvaluation: false, manualOverride: false,
+    modelImage, productImages: product.productImages, evaluation, skipEvaluation: false, manualOverride: true,
     productId: product.name, quality: "medium", size: "1024x1536", attempt: retrying ? retry.attempt : 1,
     rerenderReasons: retrying ? retry.rerenderReasons : [], rerenderKeep: retrying ? retry.rerenderKeep : []
   });
   const generatedImage = await imageDataUrl(rendered.filename);
-  await sendProgress(job.id, { productId: product.id, status: "QC", jobStatus: "QC", evaluation, selectedModel, message: "Đang kiểm tra chất lượng ảnh kết quả..." });
-  const qc = await engineJson("/api/qc", { modelImage, productImages: product.productImages, generatedImage });
-  return { ...evaluated, output: { dataUrl: generatedImage, filename: rendered.filename }, qc };
+  await sendProgress(job.id, { productId: product.id, status: "DONE", jobStatus: "RENDERING", evaluation, selectedModel, message: "Đã tạo ảnh; kéo so sánh sản phẩm gốc với ảnh mới để duyệt." });
+  return { ...evaluated, output: { dataUrl: generatedImage, filename: rendered.filename }, qc: null };
 }
 
 async function processEvaluationJob(job) {
@@ -142,24 +143,62 @@ async function processJob(job) {
   return processEvaluationJob(job);
 }
 
+function runJobInBackground(job) {
+  const task = (async () => {
+    console.log(`Nhận job ${job.id} (${activeJobs.size + 1}/${helperConcurrency})`);
+    try {
+      await processJob(job);
+    } catch (error) {
+      console.error(`[job ${job.id}] ${error.message}`);
+      try {
+        await sendResult(job.id, {
+          status: "FAILED",
+          products: (job.products || []).map(product => ({
+            id: product.id,
+            name: product.name,
+            error: error.message,
+            retryable: isRetryableError(error)
+          }))
+        });
+      } catch (resultError) {
+        console.error(`[job ${job.id}] Không gửi được lỗi về central: ${resultError.message}`);
+      }
+    } finally {
+      activeJobs.delete(job.id);
+      console.log(`Xong job ${job.id}; còn ${activeJobs.size} job đang chạy.`);
+    }
+  })();
+  activeJobs.set(job.id, task);
+}
+
 async function loop() {
   startEngine();
   const status = await waitForEngine();
   const authenticated = await localAuthStatus();
-  const response = await pollCentral(authenticated);
-  if (response.job && authenticated) {
-    console.log(`Nhận job ${response.job.id}`);
-    await processJob(response.job);
-  } else if (response.job && !authenticated) {
-    console.warn("Có job nhưng Codex chưa đăng nhập; helper sẽ thử lại sau.");
-    await sendResult(response.job.id, { status: "FAILED", products: response.job.products.map(product => ({ id: product.id, error: "Helper chưa đăng nhập Codex/ChatGPT trên máy này.", retryable: true })) });
+  if (!authenticated) {
+    if (!loop.lastUnauthenticatedWarningAt || Date.now() - loop.lastUnauthenticatedWarningAt > 30_000) {
+      console.warn("Codex chưa đăng nhập; helper sẽ không nhận job mới cho tới khi đăng nhập xong.");
+      loop.lastUnauthenticatedWarningAt = Date.now();
+    }
+    await pollCentral(false);
+    return status;
   }
+  let claimed = 0;
+  while (activeJobs.size < helperConcurrency) {
+    const response = await pollCentral(true);
+    if (!response.job) break;
+    if (activeJobs.has(response.job.id)) break;
+    runJobInBackground(response.job);
+    claimed += 1;
+  }
+  if (claimed) console.log(`Đang chạy song song ${activeJobs.size}/${helperConcurrency} job.`);
   return status;
 }
 
 async function main() {
   console.log(`Studio Flow helper ${helperId}`);
   console.log(`Central: ${centralOrigin}`);
+  console.log(`Concurrency: ${helperConcurrency} job đồng thời`);
   console.log("Helper không gửi credential ChatGPT về central server.");
   while (true) {
     try { await loop(); }

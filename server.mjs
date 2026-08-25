@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import readline from "node:readline";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -33,6 +34,14 @@ const evalModel = process.env.STUDIO_EVAL_MODEL || "gpt-5.6-sol";
 const evalEffort = process.env.STUDIO_EVAL_EFFORT || "low";
 const renderModel = process.env.STUDIO_RENDER_MODEL || "gpt-5.6-sol";
 const renderEffort = process.env.STUDIO_RENDER_EFFORT || "medium";
+const renderCapacityRetries = Math.max(0, Math.min(5, Number(process.env.STUDIO_RENDER_CAPACITY_RETRIES || 3)));
+const renderCapacityRetryDelayMs = Math.max(1000, Number(process.env.STUDIO_RENDER_CAPACITY_RETRY_DELAY_MS || 15000));
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+function isCapacityErrorText(value) {
+  return /selected model is at capacity|model .*capacity|try a different model/i.test(String(value || ""));
+}
 
 function findCodex() {
   const explicit = process.env.CODEX_CLI_PATH;
@@ -95,7 +104,14 @@ function codexExec(prompt, workdir, timeoutMs, model, effort) {
       settled = true;
       clearTimeout(timer);
       if (code === 0) resolve(out);
-      else reject(Object.assign(new Error(`Codex thoát với mã ${code}. ${(err || out).slice(-400)}`), { status: 502 }));
+      else {
+        const tail = (err || out).slice(-400);
+        reject(Object.assign(new Error(`Codex thoát với mã ${code}. ${tail}`), {
+          status: isCapacityErrorText(tail) ? 503 : 502,
+          code: isCapacityErrorText(tail) ? "model_at_capacity" : "codex_exec_failed",
+          retryable: true
+        }));
+      }
     });
   });
 }
@@ -132,6 +148,14 @@ function moderationError({ stage = "unknown", categories = [], requestId = null 
   return error;
 }
 
+function modelCapacityError() {
+  return Object.assign(new Error("Model tạo ảnh của ChatGPT đang quá tải. Hệ thống đã tự thử lại nhưng chưa nhận được lượt render; bấm Tạo lại sau ít phút."), {
+    status: 503,
+    code: "model_at_capacity",
+    retryable: true
+  });
+}
+
 function moderationFromLog(log) {
   const text = String(log || "");
   if (!/(moderation|safety (?:filter|check)|image generation refused|image_gen refuses?)/i.test(text)) return null;
@@ -162,6 +186,108 @@ function newJobDir(kind) {
 function cleanupJob(dir) {
   if (keepJobs) return;
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* bỏ qua */ }
+}
+
+function recentSessionDirs(sinceMs) {
+  const rootDir = process.env.CODEX_SESSION_ROOT || path.join(os.homedir(), ".codex", "sessions");
+  const dirs = new Set();
+  const end = Date.now() + 24 * 60 * 60 * 1000;
+  for (let time = sinceMs - 24 * 60 * 60 * 1000; time <= end; time += 24 * 60 * 60 * 1000) {
+    const date = new Date(time);
+    const yyyy = String(date.getFullYear());
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    dirs.add(path.join(rootDir, yyyy, mm, dd));
+  }
+  return [...dirs].filter(dir => {
+    try { return fs.existsSync(dir); } catch { return false; }
+  });
+}
+
+function recentJsonlFiles(dir, sinceMs) {
+  const found = [];
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        found.push(...recentJsonlFiles(file, sinceMs));
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+      const stat = fs.statSync(file);
+      if (stat.mtimeMs >= sinceMs - 30 * 60 * 1000) found.push(file);
+    }
+  } catch {
+    // Session files may be locked while Codex writes them; ignore unreadable folders.
+  }
+  return found;
+}
+
+function validImageFile(file) {
+  let fd = null;
+  try {
+    const stat = fs.statSync(file);
+    if (!stat.isFile() || stat.size < 1024) return false;
+    fd = fs.openSync(file, "r");
+    const head = Buffer.alloc(16);
+    fs.readSync(fd, head, 0, head.length, 0);
+    const png = head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47;
+    const jpg = head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+    const webp = head.slice(0, 4).toString("ascii") === "RIFF" && head.slice(8, 12).toString("ascii") === "WEBP";
+    return png || jpg || webp;
+  } catch {
+    return false;
+  } finally {
+    if (fd != null) {
+      try { fs.closeSync(fd); } catch { /* ignore */ }
+    }
+  }
+}
+
+async function recoverCodexGeneratedOutput(jobDir, outputFile, startedAtMs) {
+  const resolvedJobDir = path.resolve(jobDir);
+  const needles = [
+    resolvedJobDir,
+    resolvedJobDir.replace(/\\/g, "\\\\"),
+    path.basename(resolvedJobDir)
+  ].filter(Boolean);
+
+  for (const sessionDir of recentSessionDirs(startedAtMs)) {
+    for (const file of recentJsonlFiles(sessionDir, startedAtMs)) {
+      let mentionsThisJob = false;
+      const stream = fs.createReadStream(file, { encoding: "utf8" });
+      const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
+      try {
+        for await (const line of lines) {
+          if (!mentionsThisJob && needles.some(needle => line.includes(needle))) {
+            mentionsThisJob = true;
+          }
+          if (!mentionsThisJob || !line.includes("image_generation_end")) continue;
+          let item = null;
+          try { item = JSON.parse(line); } catch { continue; }
+          const payload = item?.payload || {};
+          const savedPath = payload.saved_path || payload.result?.saved_path;
+          if (savedPath && validImageFile(savedPath)) {
+            fs.copyFileSync(savedPath, outputFile);
+            return { recovered: true, source: "codex_saved_path", path: savedPath, session: file };
+          }
+          if (typeof payload.result === "string" && payload.result.length > 1000) {
+            try {
+              fs.writeFileSync(outputFile, Buffer.from(payload.result, "base64"));
+              if (validImageFile(outputFile)) return { recovered: true, source: "codex_result_base64", session: file };
+              fs.rmSync(outputFile, { force: true });
+            } catch {
+              try { fs.rmSync(outputFile, { force: true }); } catch { /* ignore */ }
+            }
+          }
+        }
+      } finally {
+        lines.close();
+        stream.destroy();
+      }
+    }
+  }
+  return { recovered: false };
 }
 
 // Ghi dataURL ra file thật để codex đọc được bằng view_image.
@@ -228,7 +354,7 @@ function normalizeEvaluation(raw) {
   const modelScore = sumFields(model,{body_visibility:25,sharpness:15,resolution:10,pose_readability:15,occlusion:15,lighting:10,perspective:5,subject_cleanliness:5});
   const productScore = sumFields(product,{product_completeness:25,silhouette_readability:20,construction_detail:15,sharpness:10,color_reliability:10,fabric_texture:10,viewpoint_usefulness:5,occlusion:5});
   const inputPass = modelScore>=82 && productScore>=85 && !model.hard_fail && !product.hard_fail;
-  const rawScore = inputPass ? sumFields(comp,{pose_body_geometry:25,garment_geometry:25,length_coverage:20,viewpoint:15,occlusion:10,camera_perspective:5}) : 0;
+  const rawScore = sumFields(comp,{pose_body_geometry:25,garment_geometry:25,length_coverage:20,viewpoint:15,occlusion:10,camera_perspective:5});
   const finalScore = comp.score_cap_applied ? Math.min(rawScore,69) : rawScore;
   const readinessScore = Math.min(modelScore,productScore);
   return {...raw,input_quality:{...raw.input_quality,model:{...model,score:modelScore,...fiveLevel(modelScore)},product:{...product,score:productScore,...fiveLevel(productScore)},input_readiness_score:readinessScore,...fiveLevel(readinessScore),decision:inputPass?'PASS':'REJECT'},compatibility:{...comp,evaluated:inputPass,raw_score:rawScore,final_score:finalScore,...fiveLevel(finalScore),decision:inputPass&&finalScore>=82?'AUTO_RENDER':'REJECT'}};
@@ -441,11 +567,12 @@ function composeRenderPrompt(payload) {
   const fixes = list("rerenderReasons");
   const guidance = [
     ` Revision ${Number(payload.attempt)}.`,
+    " This must be a newly generated corrected revision from the original model canvas and garment references, not a reuse or near-duplicate of an earlier generated result.",
     keep.length ? ` Already correct, keep unchanged: ${keep.join(", ")}.` : "",
     fixes.length
       ? ` Change only this: ${fixes.join("; ")}.`
       : " Bring the garment closer to the references.",
-    " Leave the rest as it was."
+    " Preserve the original model photo and product identity, but visibly re-evaluate garment placement, fit and drape for this revision."
   ].filter(Boolean).join("");
   return `${basePrompt}${guidance}`;
 }
@@ -505,8 +632,9 @@ async function renderImageViaCodex(payload) {
     const productFiles = payload.productImages.slice(0, 8).map((data, index) => writeDataUrl(dir, `product-${index + 1}`, data));
     const size = payload.size || "1024x1536";
     const quality = payload.quality || "medium";
+    const outputFile = path.join(dir, "output.png");
     const instruction = [
-      "Edit a fashion photograph with the built-in image_gen tool. Do not write or run image code, and do not use the CLI fallback.",
+      "Edit a fashion photograph with the built-in image_gen tool. Do not write or run image-generation code. Use the image_gen tool for the image itself.",
       "",
       "1. Load every image with view_image, in this order:",
       `1. ${path.basename(modelFile)} = model, the base image to preserve`,
@@ -518,11 +646,32 @@ async function renderImageViaCodex(payload) {
       "</render_spec>",
       `Target roughly ${size}, portrait, ${quality} quality, PNG.`,
       "",
-      "3. Save the result as `output.png` here. One image, no variants, no questions.",
+      `3. Save/export or copy the final image to this exact file path: ${outputFile}`,
+      "If image_gen returns a managed `saved_path`, copy that file to the exact output path above. If copying is not available, include the exact saved_path in your final message. One image, no variants, no questions.",
       "If image_gen is blocked or refuses, do not retry the same request. Write `failure.json` with raw JSON shaped as {\"code\":\"moderation_blocked\",\"moderation_stage\":\"input|output|unknown\",\"categories\":[]} using details returned by the tool when available, then stop."
     ].join("\n");
-    const log = await codexExec(instruction, dir, Number(process.env.STUDIO_RENDER_TIMEOUT_MS || 600000), renderModel, renderEffort);
-    const outputFile = path.join(dir, "output.png");
+    let log = "";
+    let renderStartedAtMs = Date.now();
+    for (let attempt = 0; attempt <= renderCapacityRetries; attempt += 1) {
+      try {
+        renderStartedAtMs = Date.now();
+        log = await codexExec(instruction, dir, Number(process.env.STUDIO_RENDER_TIMEOUT_MS || 600000), renderModel, renderEffort);
+        break;
+      } catch (error) {
+        if (error.code === "model_at_capacity" && attempt < renderCapacityRetries) {
+          await sleep(renderCapacityRetryDelayMs * (attempt + 1));
+          continue;
+        }
+        if (error.code === "model_at_capacity") throw modelCapacityError();
+        throw error;
+      }
+    }
+    if (!fs.existsSync(outputFile)) {
+      const recovered = await recoverCodexGeneratedOutput(dir, outputFile, renderStartedAtMs);
+      if (recovered.recovered) {
+        console.warn(`Recovered Codex generated image for ${path.basename(dir)} from ${recovered.source}.`);
+      }
+    }
     if (!fs.existsSync(outputFile)) {
       const failureFile = path.join(dir, "failure.json");
       if (fs.existsSync(failureFile)) {
@@ -538,8 +687,12 @@ async function renderImageViaCodex(payload) {
       }
       const blocked = moderationFromLog(log);
       if (blocked) throw moderationError(blocked);
+      if (isCapacityErrorText(log)) throw modelCapacityError();
       const why = lastWords(log);
-      throw Object.assign(new Error(`Codex không tạo output.png (model ${renderModel}).${why ? ` Agent nói: ${why}` : ""}`), { status: 502 });
+      const detail = /managed output directory|saved_path|did not honor the requested workspace path|copy operation/i.test(why)
+        ? "Codex đã tạo ảnh nhưng chưa trả file về đúng thư mục. Hệ thống chưa tìm thấy file managed để thu hồi; bấm Duyệt tạo ảnh/Tạo lại sau ít phút."
+        : `Codex không tạo được ảnh đầu ra.${why ? ` Chi tiết: ${why}` : ""}`;
+      throw Object.assign(new Error(detail), { status: 502, code: "codex_output_missing", retryable: true });
     }
     const buffer = fs.readFileSync(outputFile);
     const { filename, savedPath } = saveGenerated(payload, buffer);
@@ -663,4 +816,4 @@ if (isMain) server.listen(port, "127.0.0.1", async () => {
   }
 });
 
-export { buildRenderPrompt, composeRenderPrompt, moderationFromLog, errorResponse, assertRenderPayload, normalizeEvaluation };
+export { buildRenderPrompt, composeRenderPrompt, moderationFromLog, errorResponse, assertRenderPayload, normalizeEvaluation, recoverCodexGeneratedOutput };

@@ -7,9 +7,15 @@ export function selectCandidate(evaluation) {
 }
 
 export function retryInstructions(product) {
+  const attempt = (product?.outputs?.length || 0) + 1;
+  const qcReasons = product?.lastQc?.rerender_reasons || product?.lastQc?.critical_failure_reasons || [];
+  const fallbackReasons = [
+    `create a fresh revision ${attempt} from the original model image and garment references`,
+    "make the garment placement, fit and drape visibly re-evaluated while preserving the same product design"
+  ];
   return {
-    attempt: (product?.outputs?.length || 0) + 1,
-    rerenderReasons: product?.lastQc?.rerender_reasons || product?.lastQc?.critical_failure_reasons || [],
+    attempt,
+    rerenderReasons: qcReasons.length ? qcReasons : fallbackReasons,
     rerenderKeep: product?.lastQc?.strengths || []
   };
 }

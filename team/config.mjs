@@ -16,6 +16,12 @@ export const maxModels = 10;
 export const maxVersions = 4;
 export const sessionTtlMs = Number(process.env.STUDIO_SESSION_TTL_MS || 8 * 60 * 60 * 1000);
 export const helperOfflineMs = Number(process.env.STUDIO_HELPER_OFFLINE_MS || 45_000);
+export const sharedHostHelperUserIds = new Set(
+  String(process.env.STUDIO_SHARED_HOST_HELPER_USER_IDS || "")
+    .split(",")
+    .map(value => value.trim())
+    .filter(Boolean)
+);
 
 export function ensureDirectories() {
   return { dataRoot, jobsRoot };

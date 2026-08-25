@@ -134,6 +134,20 @@ export class JsonStore {
     return project && project.ownerId === ownerId ? project : null;
   }
 
+  renameProject(projectId, ownerId, name) {
+    const project = this.projectForUser(projectId, ownerId);
+    if (!project) return null;
+    project.name = name;
+    project.updatedAt = now();
+    for (const job of this.state.jobs.filter(item => item.ownerId === ownerId && item.projectId === projectId)) {
+      job.project = { ...(job.project || {}), id: project.id, name: project.name, storageKey: project.storageKey };
+      job.updatedAt = now();
+    }
+    this.audit("project.renamed", ownerId, project.id, { name });
+    this.save();
+    return project;
+  }
+
   deleteProject(projectId, ownerId = null) {
     const index = this.state.projects.findIndex(project => project.id === projectId && (!ownerId || project.ownerId === ownerId));
     if (index < 0) return null;

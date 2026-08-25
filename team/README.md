@@ -1,6 +1,6 @@
 # Studio Flow Team
 
-Phiên bản team của Studio Flow: website dùng chung nhận job, helper chạy trên máy thành viên và dùng Codex CLI/ChatGPT đăng nhập tại máy đó để đánh giá, render và QC ảnh.
+Phiên bản team của Studio Flow: website dùng chung nhận job, helper chạy trên máy thành viên và dùng Codex CLI/ChatGPT đăng nhập tại máy đó để đánh giá và render ảnh. Bước AI QC sau render đã được bỏ để tiết kiệm token; người dùng kiểm tra thủ công bằng kéo thả so sánh ảnh sản phẩm gốc với ảnh mới.
 
 ## Chạy central server local
 
@@ -51,6 +51,38 @@ npm run team:helper
 
 Có thể dùng systemd, launchd hoặc Task Scheduler để chạy nền; không lưu token trong Git.
 
+## Chế độ máy chủ dùng chung trên máy anh
+
+Nếu muốn mọi mã nhân viên (`media001`–`media005`) đều gen qua máy chủ của anh, bật host helper trong `team/.env`:
+
+```env
+STUDIO_SHARED_HOST_HELPER_USER_IDS=lytrendy-team
+```
+
+Sau đó chạy trên máy anh:
+
+```powershell
+npm run team:start
+npm run team:helper
+```
+
+Muốn xử lý nhiều batch cùng lúc trên máy anh, đặt thêm:
+
+```env
+STUDIO_HELPER_CONCURRENCY=2
+```
+
+`2` là mức khởi đầu an toàn. Có thể tăng lên `3` nếu máy anh khỏe và tài khoản ChatGPT/Codex không báo nghẽn/limit; không nên tăng quá cao vì mỗi job đều gọi Codex/image generation riêng.
+
+Ở chế độ này:
+
+- Nhân viên vẫn đăng nhập bằng mã riêng và project/ảnh vẫn tách riêng theo từng người.
+- Helper đang online trên máy anh sẽ nhận job đang chờ của toàn team, tối đa theo `STUDIO_HELPER_CONCURRENCY`.
+- Nếu máy anh, helper hoặc Codex/ChatGPT trên máy anh tắt thì job chuyển về trạng thái chờ helper.
+- Chế độ này dùng tài khoản ChatGPT/Codex đang đăng nhập trên máy anh để gen ảnh; không dùng ChatGPT của máy nhân viên.
+- Đa nhiệm chạy song song theo batch/job; các sản phẩm bên trong cùng một batch vẫn xử lý tuần tự để giảm lỗi prompt và ảnh.
+- Điểm đánh giá đầu vào chỉ là cảnh báo. Sau khi người dùng bấm `Duyệt tạo ảnh`, helper sẽ render bằng manual override; batch điểm thấp không bị gate chặn nữa.
+
 ## Google Drive
 
 Central server chỉ upload Drive khi có đủ các biến sau:
@@ -81,4 +113,4 @@ Reverse proxy (Nginx/Caddy/Cloudflare Tunnel) phải chuyển HTTPS vào cổng 
 npm run team:test
 ```
 
-Test hiện có kiểm tra hash credential, session claim, giới hạn job và central API. Luồng render thật cần chạy pilot trên từng hệ điều hành vì phụ thuộc tài khoản ChatGPT/Codex và quyền image generation của tài khoản đó.
+Test hiện có kiểm tra hash credential, session claim, giới hạn job và central API. Luồng render thật cần chạy pilot trên từng hệ điều hành vì phụ thuộc tài khoản ChatGPT/Codex và quyền image generation của tài khoản đó. AI QC sau render đang tắt để giảm chi phí token.
