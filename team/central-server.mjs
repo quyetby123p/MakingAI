@@ -165,11 +165,21 @@ function isCapacityError(message) {
   return /selected model is at capacity|model .*capacity|try a different model|Model tạo ảnh của ChatGPT đang quá tải/i.test(String(message || ""));
 }
 
+function isOutputModerationError(item) {
+  const message = typeof item === "string" ? item : item?.error || item?.message || "";
+  const stage = item?.moderationDetails?.moderation_stage || item?.moderation_details?.moderation_stage || "";
+  return item?.errorCode === "moderation_blocked" && stage === "output"
+    || /OpenAI đã chặn kết quả tạo thử|kiểm tra đầu ra|moderation.*output|output.*moderation/i.test(String(message || ""));
+}
+
 function publicProductState(product) {
   const hasOutput = Boolean((product.outputs || []).length);
   const canRenderAfterEvaluation = Boolean(product.evaluation && !hasOutput);
   if (canRenderAfterEvaluation && isAdvisoryGateError(product.error)) {
     return { status: "EVALUATED", error: null, progressMessage: "Đã đánh giá; điểm là cảnh báo, vẫn có thể duyệt tạo ảnh." };
+  }
+  if (canRenderAfterEvaluation && isOutputModerationError(product)) {
+    return { status: "EVALUATED", error: null, progressMessage: "Kết quả thử bị chặn ở bước đầu ra. Bấm Duyệt tạo ảnh để thử lại bằng prompt an toàn hơn." };
   }
   if (product.evaluation && isCapacityError(product.error)) {
     return { status: "EVALUATED", error: null, progressMessage: "Model tạo ảnh đang quá tải. Bấm Duyệt tạo ảnh hoặc Tạo lại sau ít phút." };
@@ -181,15 +191,16 @@ function publicJobStatus(job) {
   if (job.status !== "FAILED") return job.status;
   const products = job.products || [];
   const hasAdvisoryGateProduct = products.some(product => product.evaluation && !(product.outputs || []).length && isAdvisoryGateError(product.error));
+  const hasOutputModerationProduct = products.some(product => product.evaluation && !(product.outputs || []).length && isOutputModerationError(product));
   const hasCapacityProduct = products.some(product => product.evaluation && isCapacityError(product.error));
-  const recoverableErrorsOnly = !job.errors?.length || job.errors.every(error => isAdvisoryGateError(error.error) || isCapacityError(error.error));
-  return (hasAdvisoryGateProduct || hasCapacityProduct) && recoverableErrorsOnly ? "AWAITING_EVALUATION_APPROVAL" : job.status;
+  const recoverableErrorsOnly = !job.errors?.length || job.errors.every(error => isAdvisoryGateError(error.error) || isOutputModerationError(error) || isCapacityError(error.error));
+  return (hasAdvisoryGateProduct || hasOutputModerationProduct || hasCapacityProduct) && recoverableErrorsOnly ? "AWAITING_EVALUATION_APPROVAL" : job.status;
 }
 
 function publicJob(job) {
   return {
     id: job.id, status: publicJobStatus(job), name: job.name, projectId: job.projectId || null, project: job.project || null, createdAt: job.createdAt, updatedAt: job.updatedAt,
-    retryRequests: job.retryRequests || [], errors: publicJobStatus(job) === "FAILED" ? job.errors || [] : (job.errors || []).filter(error => !isAdvisoryGateError(error.error) && !isCapacityError(error.error)), drive: job.drive || null,
+    retryRequests: job.retryRequests || [], errors: publicJobStatus(job) === "FAILED" ? job.errors || [] : (job.errors || []).filter(error => !isAdvisoryGateError(error.error) && !isOutputModerationError(error) && !isCapacityError(error.error)), drive: job.drive || null,
     estimatedSeconds: job.estimatedSeconds || null, startedAt: job.startedAt || null, finishedAt: job.finishedAt || null,
     inputHistory: {
       modelImages: (job.input?.modelImages || []).map((_, index) => ({
@@ -203,7 +214,7 @@ function publicJob(job) {
       const state = publicProductState(product);
       const isRetrying = (job.retryRequests || []).includes(product.id);
       return ({
-      id: product.id, name: product.name, status: state.status, progressMessage: state.progressMessage, error: state.error,
+      id: product.id, name: product.name, status: state.status, progressMessage: state.progressMessage, error: state.error, errorCode: product.errorCode || null,
       isRetrying, waitingVersion: isRetrying ? (product.outputs || []).length + 1 : null,
       productReferenceUrl: product.inputFiles?.[0] ? `/api/jobs/${encodeURIComponent(job.id)}/references/product/${encodeURIComponent(product.id)}` : null,
       productReferencePreviewUrl: product.inputFiles?.[0] ? previewUrlFor(`/api/jobs/${encodeURIComponent(job.id)}/references/product/${encodeURIComponent(product.id)}`) : null,
@@ -254,7 +265,7 @@ function jobPayloadForHelper(job) {
     products: job.products.map(product => ({
       id: product.id, name: product.name, productImages: product.inputFiles.map(fileToDataUrl),
       evaluation: product.evaluation || null, selectedModel: product.selectedModel ?? null,
-      outputs: product.outputs || [], lastQc: product.lastQc || null
+      outputs: product.outputs || [], lastQc: product.lastQc || null, renderAttempts: product.renderAttempts || 0
     }))
   };
   return data;
@@ -332,12 +343,18 @@ async function handle(req, res) {
           if (result.evaluation) product.evaluation = result.evaluation;
           product.selectedModel = result.selectedModel ?? product.selectedModel;
           product.error = result.error;
+          product.errorCode = result.errorCode || null;
+          product.retryable = result.retryable === true;
+          product.moderationDetails = result.moderationDetails || null;
           product.progressMessage = null;
           product.status = "FAILED";
-          errors.push({ productId: product.id, error: result.error });
+          errors.push({ productId: product.id, error: result.error, errorCode: product.errorCode, retryable: product.retryable, moderationDetails: product.moderationDetails });
           continue;
         }
         product.error = null;
+        product.errorCode = null;
+        product.retryable = false;
+        product.moderationDetails = null;
         product.progressMessage = null;
         product.status = evaluationOnly ? "EVALUATED" : "DONE";
         product.evaluation = result.evaluation || product.evaluation;
@@ -478,7 +495,16 @@ async function handle(req, res) {
       const selected = job.products.filter(product => requested.includes(product.id));
       if (!selected.length || selected.some(product => !product.evaluation)) throw Object.assign(new Error("Cần có đánh giá trước khi duyệt tạo ảnh."), { status: 422, code: "evaluation_required" });
       const renderRequests = selected.map(product => product.id);
-      for (const product of selected) { product.status = "WAITING_FOR_RENDER"; product.progressMessage = "Đã duyệt; đang chờ helper tạo ảnh."; product.error = null; }
+      for (const product of selected) {
+        const nextAttempt = (Number(product.renderAttempts) || 0) + 1;
+        product.renderAttempts = isOutputModerationError(product) && nextAttempt < 2 ? 2 : nextAttempt;
+        product.status = "WAITING_FOR_RENDER";
+        product.progressMessage = product.renderAttempts > 1 ? "Đã duyệt; đang chờ helper tạo lại bằng prompt an toàn hơn." : "Đã duyệt; đang chờ helper tạo ảnh.";
+        product.error = null;
+        product.errorCode = null;
+        product.retryable = false;
+        product.moderationDetails = null;
+      }
       store.updateJob(job.id, { products: job.products, renderRequests, retryRequests: [], status: "WAITING_FOR_HELPER", helperId: null, startedAt: null, errors: [] });
       store.audit("job.render_approved", user.id, job.id, { productIds: renderRequests });
       return json(res, 200, { job: publicJob(store.getJob(job.id)) });
@@ -503,7 +529,8 @@ async function handle(req, res) {
       if ((product.outputs || []).length >= 4) throw Object.assign(new Error("Sản phẩm đã dùng hết 3 lần tạo lại."), { status: 422, code: "max_versions" });
       job.retryRequests = [...new Set([...(job.retryRequests || []), product.id])];
       job.renderRequests = [...new Set([...(job.renderRequests || []), product.id])];
-      product.status = "WAITING_FOR_RENDER"; product.error = null; product.progressMessage = "Đang chờ helper tạo lại ảnh.";
+      product.renderAttempts = (Number(product.renderAttempts) || (product.outputs || []).length || 1) + 1;
+      product.status = "WAITING_FOR_RENDER"; product.error = null; product.errorCode = null; product.retryable = false; product.moderationDetails = null; product.progressMessage = "Đang chờ helper tạo lại ảnh.";
       store.updateJob(job.id, { retryRequests: job.retryRequests, renderRequests: job.renderRequests, products: job.products, status: "WAITING_FOR_HELPER", errors: [] });
       return json(res, 200, { job: publicJob(store.getJob(job.id)) });
     }

@@ -129,7 +129,7 @@ function lastWords(log) {
 const publicModerationMessage = stage => stage === "input"
   ? "OpenAI đã chặn ảnh hoặc mô tả tại bước kiểm tra đầu vào. App không có quyền tắt lớp kiểm tra này; hãy đổi ảnh đầu vào hoặc dùng một dịch vụ tạo ảnh khác phù hợp hơn."
   : stage === "output"
-    ? "OpenAI đã chặn kết quả tạo thử ở bước kiểm tra đầu ra. Hệ thống đã dừng và không tự gửi lại cùng một yêu cầu."
+    ? "OpenAI đã chặn kết quả tạo thử ở bước kiểm tra đầu ra. Đây không phải lỗi độ fit; hãy bấm Duyệt tạo ảnh để thử lại bằng prompt an toàn hơn hoặc đổi ảnh model/sản phẩm."
     : "OpenAI đã chặn yêu cầu tạo ảnh. App không có quyền tắt lớp kiểm tra này; hãy đổi đầu vào hoặc dùng một dịch vụ tạo ảnh khác phù hợp hơn.";
 
 function moderationError({ stage = "unknown", categories = [], requestId = null } = {}) {
@@ -439,7 +439,7 @@ function cleanFashionPhrase(value) {
       .replace(/\blow[- ]cut\b/gi, "open neckline")
       .replace(/\bcleavage\b/gi, "neckline")
       .replace(/\bnude\b/gi, "beige")
-      .replace(/\b(?:see[- ]through|transparent|sheer)\b/gi, "lightweight")
+      .replace(/\b(?:see[- ]through|transparent|sheer)\b/gi, "fully lined lace-overlay")
       .replace(/\bskin[- ]tight\b/gi, "close-fitting")
       .replace(/\s+/g, " ").slice(0, 160)
     : "";
@@ -463,6 +463,7 @@ function buildRenderPrompt(e = {}) {
     garment ? `The garment: ${garment}.` : "",
     keep ? `Keep visible: ${keep}.` : "",
     "Take construction details only from the references; where they show nothing, choose the plainest retail-catalog reading. Keep correct hem, heel and floor contact.",
+    "For lace, mesh, lightweight or translucent-looking fabrics, render the garment as fully lined and opaque in all body areas while preserving the visible lace texture and trim.",
     "Use a neutral, non-suggestive, product-focused presentation suitable for an online retail catalogue."
   ].filter(Boolean).join(" ");
 }
@@ -572,7 +573,8 @@ function composeRenderPrompt(payload) {
     fixes.length
       ? ` Change only this: ${fixes.join("; ")}.`
       : " Bring the garment closer to the references.",
-    " Preserve the original model photo and product identity, but visibly re-evaluate garment placement, fit and drape for this revision."
+    " Preserve the original model photo and product identity, but visibly re-evaluate garment placement, fit and drape for this revision.",
+    " Keep the result retail-safe: if a previous output was blocked, make the garment more opaque, fully lined and catalogue-neutral while preserving the product design."
   ].filter(Boolean).join("");
   return `${basePrompt}${guidance}`;
 }

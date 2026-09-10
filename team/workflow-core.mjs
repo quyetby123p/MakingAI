@@ -20,6 +20,12 @@ export function retryInstructions(product) {
   };
 }
 
-export function isRetryableError(error) { return error?.code !== "moderation_blocked" && error?.retryable !== false; }
+export function isRetryableError(error) {
+  if (error?.code === "moderation_blocked") {
+    const stage = error?.moderationDetails?.moderation_stage || error?.data?.moderation_details?.moderation_stage || "";
+    return stage === "output" || /kiểm tra đầu ra|output/i.test(String(error?.message || ""));
+  }
+  return error?.retryable !== false;
+}
 
 export { buildRenderPrompt, composeRenderPrompt, normalizeEvaluation, moderationFromLog };

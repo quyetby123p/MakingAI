@@ -19,7 +19,14 @@ function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function requestJson(url, options = {}) {
   return fetch(url, { ...options, headers: { "content-type": "application/json", ...(options.headers || {}) } }).then(async response => {
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw Object.assign(new Error(data.error || `HTTP ${response.status}`), { status: response.status, data });
+    if (!response.ok) throw Object.assign(new Error(data.error || `HTTP ${response.status}`), {
+      status: response.status,
+      data,
+      code: data.code || null,
+      type: data.type || null,
+      retryable: typeof data.retryable === "boolean" ? data.retryable : undefined,
+      moderationDetails: data.moderation_details || null
+    });
     return data;
   });
 }
@@ -108,7 +115,7 @@ async function renderProduct(job, product) {
   const retry = retryInstructions(product);
   const rendered = await engineJson("/api/render", {
     modelImage, productImages: product.productImages, evaluation, skipEvaluation: false, manualOverride: true,
-    productId: product.name, quality: "medium", size: "1024x1536", attempt: retrying ? retry.attempt : 1,
+    productId: product.name, quality: "medium", size: "1024x1536", attempt: retrying ? retry.attempt : (product.renderAttempts || 1),
     rerenderReasons: retrying ? retry.rerenderReasons : [], rerenderKeep: retrying ? retry.rerenderKeep : []
   });
   const generatedImage = await imageDataUrl(rendered.filename);
@@ -120,7 +127,7 @@ async function processEvaluationJob(job) {
   const products = [];
   for (const product of job.products || []) {
     try { products.push(await evaluateProduct(job, product)); }
-    catch (error) { products.push({ id: product.id, name: product.name, error: error.message, retryable: isRetryableError(error) }); }
+    catch (error) { products.push({ id: product.id, name: product.name, error: error.message, errorCode: error.code || error.data?.code || null, moderationDetails: error.moderationDetails || error.data?.moderation_details || null, retryable: isRetryableError(error) }); }
   }
   const failed = products.some(product => product.error);
   await sendResult(job.id, { status: failed ? "FAILED" : "AWAITING_EVALUATION_APPROVAL", products });
@@ -132,7 +139,7 @@ async function processRenderJob(job) {
   for (const product of job.products || []) {
     if (requested.size && !requested.has(product.id)) continue;
     try { products.push(await renderProduct(job, product)); }
-    catch (error) { products.push({ id: product.id, name: product.name, error: error.message, retryable: isRetryableError(error) }); }
+    catch (error) { products.push({ id: product.id, name: product.name, error: error.message, errorCode: error.code || error.data?.code || null, moderationDetails: error.moderationDetails || error.data?.moderation_details || null, retryable: isRetryableError(error) }); }
   }
   const failed = products.some(product => product.error);
   await sendResult(job.id, { status: failed ? "FAILED" : "DONE", products });
@@ -157,6 +164,8 @@ function runJobInBackground(job) {
             id: product.id,
             name: product.name,
             error: error.message,
+            errorCode: error.code || error.data?.code || null,
+            moderationDetails: error.moderationDetails || error.data?.moderation_details || null,
             retryable: isRetryableError(error)
           }))
         });

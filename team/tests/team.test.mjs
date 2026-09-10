@@ -267,3 +267,62 @@ test("central server recovers model capacity errors as retryable render approval
   assert.equal(failed.job.products[0].status, "EVALUATED");
   assert.match(failed.job.products[0].progressMessage, /quá tải/);
 });
+
+test("central server keeps output moderation blocks approvable with a safer retry", async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-flow-output-block-"));
+  const port = 5800 + Math.floor(Math.random() * 500);
+  const central = path.resolve("team/central-server.mjs");
+  const child = spawn(process.execPath, [central], {
+    cwd: process.cwd(),
+    env: { ...process.env, STUDIO_TEAM_PORT: String(port), STUDIO_TEAM_DATA_DIR: dir, STUDIO_BOOTSTRAP_CODE: "safe-code", STUDIO_BOOTSTRAP_HELPER_TOKEN: "safe-helper" },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  t.after(() => { child.kill(); fs.rmSync(dir, { recursive: true, force: true }); });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("central server start timeout")), 8000);
+    child.stdout.on("data", data => { if (String(data).includes("Studio Flow Team:")) { clearTimeout(timer); resolve(); } });
+    child.on("exit", code => { clearTimeout(timer); reject(new Error(`central exited ${code}`)); });
+  });
+
+  const origin = `http://127.0.0.1:${port}`;
+  const claim = await fetch(`${origin}/api/session/claim`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: "safe-code" }) }).then(r => r.json());
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+  const created = await fetch(`${origin}/api/jobs`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${claim.token}` }, body: JSON.stringify({ name: "Output block", products: [{ name: "Lace demo", productImages: [png] }], modelImages: [png] }) }).then(r => r.json());
+  const claimed = await fetch(`${origin}/internal/helpers/poll`, { method: "POST", headers: { "content-type": "application/json", "x-helper-token": "safe-helper" }, body: JSON.stringify({ helperId: "safe-helper-id", authenticated: true }) }).then(r => r.json());
+  assert.equal(claimed.job.id, created.job.id);
+  const evaluation = { compatibility: { final_score: 91, decision: "AUTO_RENDER" }, input_quality: { input_readiness_score: 90 } };
+  const failed = await fetch(`${origin}/internal/helpers/result`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-helper-token": "safe-helper" },
+    body: JSON.stringify({
+      jobId: created.job.id,
+      status: "FAILED",
+      products: [{
+        id: "product_1",
+        evaluation,
+        selectedModel: 0,
+        error: "OpenAI đã chặn kết quả tạo thử ở bước kiểm tra đầu ra.",
+        errorCode: "moderation_blocked",
+        moderationDetails: { moderation_stage: "output", categories: [] },
+        retryable: true
+      }]
+    })
+  }).then(r => r.json());
+  assert.equal(failed.job.status, "AWAITING_EVALUATION_APPROVAL");
+  assert.equal(failed.job.errors.length, 0);
+  assert.equal(failed.job.products[0].status, "EVALUATED");
+  assert.match(failed.job.products[0].progressMessage, /prompt an toàn hơn/);
+
+  const approved = await fetch(`${origin}/api/jobs/${created.job.id}/approve-render`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${claim.token}` },
+    body: JSON.stringify({ productIds: ["product_1"] })
+  }).then(r => r.json());
+  assert.equal(approved.job.status, "WAITING_FOR_HELPER");
+  const safeRetry = await fetch(`${origin}/internal/helpers/poll`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-helper-token": "safe-helper" },
+    body: JSON.stringify({ helperId: "safe-helper-id", authenticated: true })
+  }).then(r => r.json());
+  assert.equal(safeRetry.job.products[0].renderAttempts, 2);
+});
