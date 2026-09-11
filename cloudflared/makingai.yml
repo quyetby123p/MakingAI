@@ -1,0 +1,7 @@
+tunnel: 1999ded8-6557-4fee-93e0-7746e01f7040
+credentials-file: C:/Users/acer/.cloudflared/1999ded8-6557-4fee-93e0-7746e01f7040.json
+
+ingress:
+  - hostname: makingai.vayxath.com
+    service: http://127.0.0.1:4180
+  - service: http_status:404
